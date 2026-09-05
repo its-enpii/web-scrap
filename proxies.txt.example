@@ -1,0 +1,12 @@
+# Masukkan 1 proxy per baris (HTTP atau SOCKS5)
+# Format yang didukung:
+# 1. http://username:password@host:port
+# 2. socks5://username:password@host:port
+# 3. host:port:username:password
+# 4. host:port
+# 5. http://host:port
+
+http://user:pass@127.0.0.1:8080
+socks5://127.0.0.1:1080
+192.168.1.50:8080:user:pass
+192.168.1.51:8080

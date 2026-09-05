@@ -1,0 +1,5 @@
+# Format: email|password|recovery_email_or_phone|proxy (opsional)
+contoh1@gmail.com|password123
+contoh2@gmail.com|password456|recovery@gmail.com
+contoh3@gmail.com|password789|recovery@gmail.com|http://user:pass@proxy.example.com:8080
+contoh4@gmail.com|password000||socks5://127.0.0.1:1080
