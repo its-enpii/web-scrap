@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
 from flows import AVAILABLE_FLOWS
+from flows.account_state import AccountState
 from flows.proxy_helper import parse_proxy, load_proxies_file
 
 try:
@@ -92,6 +93,21 @@ def select_output_mode_interactive() -> str:
         if choice == "2" or choice.lower() == "txt" or choice.lower() == "file":
             return "txt"
         print("[!] Pilihan tidak valid, silakan masukkan 1 atau 2.")
+
+def print_provider_status(provider: str):
+    if provider not in AVAILABLE_FLOWS:
+        print(f"[!] Flow tidak terdaftar: {provider}")
+        print(f"[*] Flow yang tersedia: {', '.join(AVAILABLE_FLOWS.keys())}")
+        return
+
+    state = AccountState(provider)
+    print(f"\n[i] Status akun untuk {AVAILABLE_FLOWS[provider].name}:")
+    lines = state.summary()
+    if not lines:
+        print("[i] Belum ada status akun tersimpan.")
+        return
+    for line in lines:
+        print(f"[i] {line}")
 
 async def launch_smart_chromium(playwright_instance, is_headless: bool) -> Browser:
     args = [
@@ -248,6 +264,9 @@ async def run_automation(
     flow_instances = {}
     for f_key in flow_keys:
         flow_cls = AVAILABLE_FLOWS[f_key]
+        if f_key == "unorouter" and engine != "camoufox":
+            print("[-] [UnoRouter] Flow ini memerlukan engine Camoufox untuk solve Turnstile otomatis.")
+            return
         default_file = os.path.join(DEFAULT_OUTPUT_DIR, f"keys_{f_key}.txt")
         target_output_file = custom_output_file or default_file
 
@@ -314,7 +333,7 @@ async def run_automation(
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-Account Google Automation CLI with Camoufox Stealth & Proxy Support")
-    parser.add_argument("-f", "--flow", help="Pilih flow target (contoh: kiro_omni, openrouter, all)", default=None)
+    parser.add_argument("-f", "--flow", help="Pilih flow target (contoh: kiro_omni, openrouter, unorouter, all)", default=None)
     parser.add_argument("-o", "--output", help="Mode output: 'omni' (Auto add ke AI-Omni) atau 'txt' (Catat email|key ke file txt)", choices=["omni", "txt"], default=None)
     parser.add_argument("--output-file", help=f"Path nama file khusus untuk menyimpan key (default: {DEFAULT_OUTPUT_DIR}/keys_<provider>.txt)", default=None)
     parser.add_argument("-a", "--accounts", help="Path ke file accounts (default: accounts.txt)", default=ACCOUNTS_FILE)
@@ -322,8 +341,13 @@ def main():
     parser.add_argument("--proxy", help="Single proxy override (contoh: http://user:pass@host:port)", default=None)
     parser.add_argument("--engine", help="Browser engine ('camoufox' untuk stealth anti-turnstile atau 'chromium')", choices=["camoufox", "chromium"], default=DEFAULT_ENGINE)
     parser.add_argument("--headless", action="store_true", help="Jalankan browser tanpa tampilan GUI")
-    
+    parser.add_argument("--status", help="Tampilkan status akun provider tanpa membuka browser (contoh: unorouter)", default=None)
+
     args = parser.parse_args()
+
+    if args.status:
+        print_provider_status(args.status)
+        return
 
     if args.flow:
         if args.flow.lower() in ["all", "semua", "*"]:

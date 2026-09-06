@@ -25,6 +25,7 @@ proxies.txt
 results/
 
 # Playwright / Camoufox artifacts
+state/
 user_data/
 .auth/
 *.png

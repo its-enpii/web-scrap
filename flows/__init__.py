@@ -5,6 +5,7 @@ from .openrouter import OpenRouterFlow
 from .tokenrouter import TokenRouterFlow
 from .bai import BAIFlow
 from .qwencloud import QwenCloudFlow
+from .unorouter import UnoRouterFlow
 
 AVAILABLE_FLOWS = {
     "kiro_omni": KiroOmniFlow,
@@ -13,4 +14,5 @@ AVAILABLE_FLOWS = {
     "tokenrouter": TokenRouterFlow,
     "bai": BAIFlow,
     "qwencloud": QwenCloudFlow,
+    "unorouter": UnoRouterFlow,
 }

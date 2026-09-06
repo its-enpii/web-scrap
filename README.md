@@ -6,7 +6,7 @@ Sistem otomasi modular berbasis **Python & Playwright** untuk melakukan registra
 
 ## Fitur Utama
 
-- **Multi-Provider Support**: Mendukung 6 provider AI (`kiro_omni`, `opencode_zen`, `openrouter`, `tokenrouter`, `bai`, `qwencloud`) dan opsi untuk menjalankan **SEMUA** provider sekaligus (`all`).
+- **Multi-Provider Support**: Mendukung 7 provider AI (`kiro_omni`, `opencode_zen`, `openrouter`, `tokenrouter`, `bai`, `qwencloud`, `unorouter`) dan opsi untuk menjalankan **SEMUA** provider sekaligus (`all`).
 - **Opsi Output Fleksibel**:
   1. **Auto Add ke AI-Omni Portal**: Otomatis memasukkan dan menyimpan API Key/Device Auth ke dashboard AI-Omni.
   2. **Catat email|key ke folder `results/`**: Cukup generate API Key di provider lalu catat baris `email|api_key` ke file `.txt` di folder `results/` tanpa perlu membuka AI-Omni.
@@ -28,6 +28,7 @@ Sistem otomasi modular berbasis **Python & Playwright** untuk melakukan registra
 | 4 | `tokenrouter` | **TokenRouter** (`tokenrouter.com`) | Login Google Popup di TokenRouter -> Buat Key di Console (`sk-irga...`). |
 | 5 | `bai` | **BAI** (`chat.b.ai`) | Login Google Popup di `chat.b.ai` -> Buat API Key di `/key` (`sk-...`). |
 | 6 | `qwencloud` | **QwenCloud** (`qwencloud.com`) | Registrasi/Login di QwenCloud -> Buat API Key (`sk-ws-...`). |
+| 7 | `unorouter` | **UnoRouter** (`unorouter.com`) | Register/Login username+password → buat & copy API Key (`sk-...`). |
 
 ---
 
@@ -77,7 +78,7 @@ Akan memandu Anda melalui 2 tahap pilihan:
  [3] OpenRouter (openrouter)
  [4] TokenRouter (tokenrouter)
  [5] BAI (chat.b.ai -> AI-Omni) (bai)
- [6] QwenCloud (qwencloud.com -> AI-Omni) (qwencloud)
+ [7] UnoRouter (unorouter.com -> AI-Omni) (unorouter)
 ==========================================
 Pilih nomor alur [0-6] atau 'q' untuk keluar:
 ```
@@ -124,6 +125,7 @@ Jika memilih mode output `.txt`, semua key akan tersimpan rapi per provider di f
 
 ```text
 results/
+state/
 +-- keys_opencode_zen.txt
 +-- keys_openrouter.txt
 +-- keys_tokenrouter.txt

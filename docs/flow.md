@@ -98,3 +98,20 @@
 10. Buka Penyedia -> Qwen Cloud
 11. Klik Tambahkan -> Pilih Global
 12. Masukkan email dan API Key lalu Simpan
+
+[UnoRouter]
+1. Wajib gunakan engine Camoufox karena Cloudflare Turnstile otomatis di-solve oleh browser stealth ini
+2. Buat username deterministik dari local-part email, ubah ke lowercase, lalu ganti karakter selain a-z/0-9/_ dengan _
+3. Buka https://unorouter.com/en/register dan tunggu jeda manusia 2-4 detik
+4. Isikan username dan password
+5. Tunggu input Turnstile terisi otomatis maksimal 30 detik
+6. Klik Create Account dan tunggu 5-8 detik
+7. Jika URL berubah ke /en/login berarti registrasi sukses; jika username sudah terdaftar lanjutkan langsung ke login
+8. Buka https://unorouter.com/en/login, isikan username dan password, tunggu Turnstile, lalu klik Sign In
+9. Tunggu URL dashboard maksimal 20 detik
+10. Buka https://unorouter.com/en/token
+11. Klik Create Key paling terakhir, isi nama key dengan username, lalu klik Create yang bukan Create Key
+12. Tunggu 4-6 detik hingga modal tertutup dan baris key baru muncul
+13. Klik Copy Key pada baris tersebut, baca clipboard, atau gunakan Reveal sebagai fallback
+14. Validasi API key dengan pola sk-... minimal 40 karakter setelah prefix
+15. Daftarkan API key ke AI-Omni atau simpan ke file keys_unorouter.txt
