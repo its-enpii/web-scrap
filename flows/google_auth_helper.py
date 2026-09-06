@@ -63,7 +63,19 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
         except Exception:
             pass
 
-        # 4. Input Recovery Email jika diminta Google
+        # 4. Handle Google OAuth Consent Screen ("Continue", "Allow", "Lanjutkan")
+        try:
+            consent_btn = auth_page.locator(
+                "button:has-text('Continue'), button:has-text('Lanjutkan'), button:has-text('Allow'), button:has-text('Izinkan')"
+            ).first
+            if await consent_btn.is_visible(timeout=6000):
+                print("[*] [Google Auth] Mendeteksi Google OAuth Consent Screen (Continue/Allow), mengklik...")
+                await human_click(consent_btn)
+                await human_delay(2.0, 3.5)
+        except Exception:
+            pass
+
+        # 5. Input Recovery Email jika diminta Google
         rec_locator = auth_page.locator(
             "text=Confirm your recovery email, text=Konfirmasikan email pemulihan Anda, div[data-challengetype='12']"
         ).first

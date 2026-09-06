@@ -31,17 +31,9 @@ class OpencodeZenFlow(BaseFlow):
 
         try:
             self.mark_stage("navigate")
-            print("[*] [Opencode Zen] Membuka https://opencode.ai/zen...")
-            await zen_page.goto("https://opencode.ai/zen", wait_until="domcontentloaded")
+            print("[*] [Opencode Zen] Membuka https://opencode.ai/auth...")
+            await zen_page.goto("https://opencode.ai/auth", wait_until="domcontentloaded")
             await human_delay(1.0, 1.8)
-
-            # 2. Klik Get started with Zen / Login (ambil .first)
-            start_btn = zen_page.locator("a:has-text('Get started with Zen'), a[href='/auth']").first
-            if await start_btn.is_visible():
-                print("[*] [Opencode Zen] Mengklik 'Get started with Zen'...")
-                await human_click(start_btn, pre_delay=0.4, post_delay=1.0)
-                await zen_page.wait_for_load_state("domcontentloaded")
-                await human_delay(0.8, 1.5)
 
             # 3. Klik Continue with Google
             google_btn = zen_page.locator("a[href*='/google/authorize'], button:has-text('Continue with Google')").first

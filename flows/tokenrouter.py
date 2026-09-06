@@ -39,8 +39,11 @@ class TokenRouterFlow(BaseFlow):
             signin_btn = tr_page.locator("button.tr-landing-header-action, button:has-text('Sign In')").first
             if await signin_btn.is_visible():
                 print("[*] [TokenRouter] Mengklik 'Sign In'...")
-                await human_click(signin_btn, pre_delay=0.4, post_delay=1.0)
-                await human_delay(0.8, 1.5)
+                try:
+                    await signin_btn.evaluate("el => el.click()")
+                except Exception:
+                    await human_click(signin_btn, pre_delay=0.4, post_delay=1.0)
+                await human_delay(1.0, 1.8)
 
             # 3. Klik/Centang checkbox
             checkbox_btn = tr_page.locator("button[type='button'].bg-white, input[type='checkbox']").first
@@ -56,13 +59,14 @@ class TokenRouterFlow(BaseFlow):
             print("[*] [TokenRouter] Mengklik Google...")
             # Cek apakah memicu popup atau navigasi langsung
             try:
-                async with context.expect_page(timeout=5000) as new_page_info:
-                    await human_click(google_btn)
+                async with context.expect_page(timeout=8000) as new_page_info:
+                    await google_btn.evaluate("el => el.click()")
                 target_page = await new_page_info.value
                 await target_page.wait_for_load_state("domcontentloaded")
+                await human_delay(1.5, 2.5)
                 await fill_google_login(target_page, account)
                 try:
-                    await target_page.wait_for_event("close", timeout=25000)
+                    await target_page.wait_for_event("close", timeout=30000)
                 except Exception:
                     if not target_page.is_closed():
                         await target_page.close()
