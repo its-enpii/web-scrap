@@ -41,7 +41,7 @@ class QwenCloudFlow(BaseFlow):
         try:
             self.mark_stage("navigate")
             print("[*] [QwenCloud] Membuka https://home.qwencloud.com/api-keys...")
-            await qwen_page.goto("https://home.qwencloud.com/api-keys", wait_until="domcontentloaded")
+            await qwen_page.goto("https://home.qwencloud.com/api-keys", wait_until="domcontentloaded", timeout=45000)
             await human_delay(1.5, 2.5)
 
             # Jika belum login, klik 'Log in now'
@@ -53,10 +53,13 @@ class QwenCloudFlow(BaseFlow):
                 await qwen_page.wait_for_load_state("domcontentloaded")
 
                 google_btn = qwen_page.locator("button:has-text('Log in with Google'), button:has-text('Google')").first
-                await google_btn.wait_for(state="visible", timeout=15000)
-                print("[*] [QwenCloud] Mengklik 'Log in with Google'...")
-                await human_click(google_btn)
-                await qwen_page.wait_for_load_state("domcontentloaded")
+                try:
+                    await google_btn.wait_for(state="visible", timeout=15000)
+                    print("[*] [QwenCloud] Mengklik 'Log in with Google'...")
+                    await human_click(google_btn)
+                    await qwen_page.wait_for_load_state("domcontentloaded")
+                except Exception:
+                    pass
 
                 # Handle Google Auth
                 await fill_google_login(qwen_page, account)
@@ -68,78 +71,87 @@ class QwenCloudFlow(BaseFlow):
                     region_in = qwen_page.locator("input[placeholder*='Select your country/region'], input[type='text']").first
                     if await region_in.is_visible():
                         await human_click(region_in)
-                        await human_type(region_in, "Indonesia")
                         await human_delay(0.5, 1.0)
-                        opt = qwen_page.locator("li:has-text('Indonesia'), div:has-text('Indonesia')").last
-                        if await opt.is_visible():
-                            await human_click(opt)
-                        else:
-                            await qwen_page.keyboard.press("Enter")
+                        indo_opt = qwen_page.locator("li:has-text('Indonesia'), div:has-text('Indonesia')").last
+                        if await indo_opt.is_visible():
+                            await human_click(indo_opt)
+                            await human_delay(0.5, 1.0)
+
+                    # Centang Terms of Use
+                    terms_cb = qwen_page.locator("input[type='checkbox'], span.next-checkbox").first
+                    if await terms_cb.is_visible():
+                        await human_click(terms_cb)
                         await human_delay(0.5, 1.0)
 
-                    cb = qwen_page.locator("input[type='checkbox']").first
-                    if await cb.is_visible() and not await cb.is_checked():
-                        await human_click(cb)
-                        await human_delay(0.3, 0.6)
-
-                    submit_btn = qwen_page.locator("button:has-text('Continue'), button[type='submit']").first
-                    await human_click(submit_btn)
-                    print("[*] [QwenCloud] Form Onboarding disubmit, menunggu redirect...")
-                    await human_delay(3.0, 5.0)
+                    # Klik Confirm
+                    confirm_btn = qwen_page.locator("button:has-text('Confirm'), button:has-text('Submit'), button:has-text('Next')").first
+                    if await confirm_btn.is_visible():
+                        await human_click(confirm_btn)
+                        print("[*] [QwenCloud] Form Onboarding Alibaba disubmit...")
+                        await qwen_page.wait_for_timeout(4000)
 
             # Tunggu kembali ke home.qwencloud.com
-            for _ in range(25):
+            for _ in range(30):
                 if "home.qwencloud.com" in qwen_page.url:
                     break
                 await qwen_page.wait_for_timeout(1000)
 
             # Pastikan berada di halaman api-keys
             if "/api-keys" not in qwen_page.url:
-                await qwen_page.goto("https://home.qwencloud.com/api-keys", wait_until="domcontentloaded")
-                await human_delay(1.5, 2.5)
+                await qwen_page.goto("https://home.qwencloud.com/api-keys", wait_until="domcontentloaded", timeout=45000)
+                await human_delay(2.0, 3.5)
 
             self.mark_stage("generate_key")
-            # Klik Create API key
-            create_btn = qwen_page.locator("button:has-text('Create API key'), button:has-text('Create key')").first
-            await create_btn.wait_for(state="visible", timeout=20000)
-            print("[*] [QwenCloud] Mengklik 'Create API key'...")
-            await human_click(create_btn, pre_delay=0.4, post_delay=1.0)
 
-            # Isi Description agar tombol Generate Key enabled
-            desc_in = qwen_page.locator('input[placeholder*="Production API key" i], [role="dialog"] input[type="text"]').first
-            await desc_in.wait_for(state="visible", timeout=8000)
-            key_name = account["email"].split("@")[0]
-            await human_type(desc_in, key_name)
-            await human_delay(0.5, 1.0)
+            # 1. Cek apakah sudah ada row key di tabel
+            content = await qwen_page.content()
+            keys = re.findall(r'(sk-ws-[A-Za-z0-9_.-]{30,})', content)
+            if keys:
+                api_key = keys[0]
+                print(f"[+] [QwenCloud] API Key ditemukan di tabel: {api_key[:12]}...{api_key[-4:]}")
 
-            # Klik Generate Key
-            gen_btn = qwen_page.locator("button:has-text('Generate Key')").first
-            await gen_btn.wait_for(state="visible", timeout=10000)
-            print("[*] [QwenCloud] Mengklik 'Generate Key'...")
-            await human_click(gen_btn, pre_delay=0.4, post_delay=1.5)
-            await human_delay(2.0, 3.0)
-
-            # Ekstrak API Key dari dialog hasil (input readonly / clipboard / regex)
-            copy_btn = qwen_page.locator('button[aria-label*="Copy" i], button:has-text("Copy")').last
-            if await copy_btn.is_visible():
-                await human_click(copy_btn, pre_delay=0.2, post_delay=0.5)
-                try:
-                    cb_key = await qwen_page.evaluate("navigator.clipboard.readText()")
-                    if cb_key and cb_key.strip().startswith("sk-"):
-                        api_key = cb_key.strip()
-                except Exception:
-                    pass
-
+            # 2. Jika belum ada, klik Create API key
             if not api_key:
-                val_in = qwen_page.locator('[role="dialog"] input[value^="sk-"]').first
-                if await val_in.is_visible():
-                    api_key = await val_in.get_attribute("value")
+                create_btn = qwen_page.locator("button:has-text('Create API key'), button:has-text('Create key')").first
+                await create_btn.wait_for(state="visible", timeout=25000)
+                print("[*] [QwenCloud] Mengklik 'Create API key'...")
+                await human_click(create_btn, pre_delay=0.4, post_delay=1.0)
 
-            if not api_key:
-                content = await qwen_page.content()
-                keys = re.findall(r'(sk-[A-Za-z0-9_.-]{20,})', content)
-                if keys:
-                    api_key = keys[0]
+                # Isi Description agar tombol Generate Key enabled
+                desc_in = qwen_page.locator('input[placeholder*="Production API key" i], [role="dialog"] input[type="text"]').first
+                await desc_in.wait_for(state="visible", timeout=20000)
+                key_name = account["email"].split("@")[0]
+                await human_type(desc_in, key_name)
+                await human_delay(0.5, 1.0)
+
+                # Klik Generate Key
+                gen_btn = qwen_page.locator("button:has-text('Generate Key')").first
+                await gen_btn.wait_for(state="visible", timeout=20000)
+                print("[*] [QwenCloud] Mengklik 'Generate Key'...")
+                await human_click(gen_btn, pre_delay=0.4, post_delay=1.5)
+                await human_delay(3.0, 5.0)
+
+                # Ekstrak API Key dari dialog hasil
+                copy_btn = qwen_page.locator('button[aria-label*="Copy" i], button:has-text("Copy")').last
+                if await copy_btn.is_visible():
+                    await human_click(copy_btn, pre_delay=0.2, post_delay=0.5)
+                    try:
+                        cb_key = await qwen_page.evaluate("navigator.clipboard.readText()")
+                        if cb_key and cb_key.strip().startswith("sk-"):
+                            api_key = cb_key.strip()
+                    except Exception:
+                        pass
+
+                if not api_key:
+                    val_in = qwen_page.locator('[role="dialog"] input[value^="sk-"]').first
+                    if await val_in.is_visible():
+                        api_key = await val_in.get_attribute("value")
+
+                if not api_key:
+                    content = await qwen_page.content()
+                    keys = re.findall(r'(sk-ws-[A-Za-z0-9_.-]{30,}|sk-[A-Za-z0-9_.-]{20,})', content)
+                    if keys:
+                        api_key = keys[0]
 
             if api_key:
                 print(f"[+] [QwenCloud] Berhasil mendapatkan API Key: {api_key[:12]}...{api_key[-4:]}")

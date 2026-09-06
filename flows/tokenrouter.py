@@ -27,29 +27,34 @@ class TokenRouterFlow(BaseFlow):
         5. Buat API Key baru jika belum ada (Side Sheet form)
         6. Klik copy token key -> Ambil API Key dari clipboard
         """
+        email = account["email"]
+        self.set_current_account(email)
         tr_page = main_page or await context.new_page()
 
         try:
             # 1. Buka TokenRouter
             self.mark_stage("navigate")
-            print("[*] [TokenRouter] Membuka https://www.tokenrouter.com/...")
-            await tr_page.goto("https://www.tokenrouter.com/", wait_until="domcontentloaded")
+            print(f"\n[{index+1}/{total}] [*] [TokenRouter] Membuka https://www.tokenrouter.com/ ({email})...")
+            await tr_page.goto("https://www.tokenrouter.com/", wait_until="domcontentloaded", timeout=45000)
             await human_delay(1.5, 2.5)
 
-            # 2. Buka Modal Sign In
+            # 2. Buka Modal Sign In jika belum login
             self.mark_stage("open_signin_modal")
             signin_btn = tr_page.locator("button.tr-landing-header-action:has-text('Sign In'), button:has-text('Sign In')").first
             if await signin_btn.is_visible():
                 await human_click(signin_btn)
                 print("[*] [TokenRouter] Tombol Sign In diklik.")
-            await human_delay(1.0, 2.0)
+                await human_delay(1.0, 2.0)
 
             # 3. Centang agreement checkbox & klik tombol Google
             self.mark_stage("click_google_oauth")
             social_btn = tr_page.locator("button.tr-auth-social-button").first
-            await social_btn.wait_for(state="visible", timeout=15000)
+            try:
+                await social_btn.wait_for(state="visible", timeout=10000)
+            except Exception:
+                pass
 
-            # Centang agreement box
+            # Centang agreement box jika ada
             agree_checkbox = tr_page.locator("button[style*='border: 1px solid rgb(0, 134, 255)'], button.w-\\[14px\\], button.h-\\[14px\\]").first
             if await agree_checkbox.count() > 0 and await agree_checkbox.is_visible():
                 await human_click(agree_checkbox)
@@ -58,72 +63,75 @@ class TokenRouterFlow(BaseFlow):
 
             # Klik Google OAuth (popup window)
             google_btn = tr_page.locator("button.tr-auth-social-button:has(img[class*='goo'])").first
-            async with context.expect_page(timeout=20000) as popup_info:
-                await human_click(google_btn)
-                print("[*] [TokenRouter] Tombol Google OAuth diklik.")
-
-            auth_page = await popup_info.value
-            await auth_page.wait_for_load_state("domcontentloaded")
-            await human_delay(1.0, 2.0)
-
-            # 4. Handle Login Google
-            self.mark_stage("google_auth")
-            login_success = await fill_google_login(auth_page, account)
-            if not login_success:
-                raise Exception("Gagal login Google OAuth untuk TokenRouter")
-
-            # Tunggu redirect ke dashboard / console
-            self.mark_stage("wait_for_console")
-            for _ in range(30):
-                if "/console" in tr_page.url:
-                    break
-                await tr_page.wait_for_timeout(1000)
-
-            if not auth_page.is_closed():
+            if await google_btn.is_visible():
+                auth_page = None
                 try:
-                    await auth_page.wait_for_event("close", timeout=15000)
+                    async with context.expect_page(timeout=15000) as popup_info:
+                        await human_click(google_btn)
+                    auth_page = await popup_info.value
                 except Exception:
-                    await auth_page.close()
-                await tr_page.wait_for_timeout(3000)
+                    # Cari di context.pages
+                    for p in context.pages:
+                        if p != tr_page and "accounts.google.com" in p.url:
+                            auth_page = p
+                            break
 
-            # 5. Navigasi ke Halaman API Keys
+                if auth_page:
+                    await auth_page.wait_for_load_state("domcontentloaded")
+                    await human_delay(1.0, 2.0)
+                    self.mark_stage("google_auth")
+                    await fill_google_login(auth_page, account)
+                    try:
+                        await auth_page.wait_for_event("close", timeout=20000)
+                    except Exception:
+                        if not auth_page.is_closed():
+                            await auth_page.close()
+                    await tr_page.wait_for_timeout(3000)
+
+            # 4. Navigasi ke Halaman API Keys
             self.mark_stage("open_tokens_page")
             print("[*] [TokenRouter] Membuka halaman https://www.tokenrouter.com/console/token...")
-            await tr_page.goto("https://www.tokenrouter.com/console/token", wait_until="domcontentloaded")
-            await tr_page.wait_for_timeout(5000)
+            await tr_page.goto("https://www.tokenrouter.com/console/token", wait_until="domcontentloaded", timeout=45000)
+            await tr_page.wait_for_timeout(4000)
 
-            # 6. Buat key jika belum ada row
+            # 5. Buat key jika belum ada row
             self.mark_stage("ensure_token_exists")
             copy_btn = tr_page.locator("button[aria-label='copy token key']").first
             if await copy_btn.count() == 0 or not await copy_btn.is_visible():
                 print("[*] [TokenRouter] Belum ada key, membuat API key baru...")
                 create_btn = tr_page.locator("button:has-text('Create Key')").first
-                await create_btn.wait_for(state="visible", timeout=15000)
-                await human_click(create_btn)
-                await tr_page.wait_for_timeout(2000)
+                if await create_btn.is_visible():
+                    await human_click(create_btn)
+                    await tr_page.wait_for_timeout(2000)
 
-                # Isi Nama Key
-                name_input = tr_page.locator("input[placeholder='Please enter a name']").first
-                if await name_input.is_visible():
-                    await human_type(name_input, "auto-key-tokenrouter")
-                    await human_delay(0.5, 1.0)
+                    # Isi Nama Key
+                    name_input = tr_page.locator("input[placeholder='Please enter a name']").first
+                    if await name_input.is_visible():
+                        await human_type(name_input, "auto-key-tokenrouter")
+                        await human_delay(0.5, 1.0)
 
-                # Klik Submit di Side Sheet
-                submit_btn = tr_page.locator(".side-sheet-footer-confirm, div:has-text('Submit'):not(:has(*))").last
-                await human_click(submit_btn)
-                print("[*] [TokenRouter] Submit create key diklik.")
-                await tr_page.wait_for_timeout(4000)
+                    # Klik Submit di Side Sheet
+                    submit_btn = tr_page.locator(".side-sheet-footer-confirm, div:has-text('Submit'):not(:has(*))").last
+                    if await submit_btn.is_visible():
+                        await human_click(submit_btn)
+                        print("[*] [TokenRouter] Submit create key diklik.")
+                        await tr_page.wait_for_timeout(4000)
 
-            # 7. Salin Key dari Clipboard
+            # 6. Salin Key dari Clipboard / Reveal
             self.mark_stage("copy_api_key")
+            api_key = None
             copy_btn = tr_page.locator("button[aria-label='copy token key']").first
-            await copy_btn.wait_for(state="visible", timeout=15000)
-            await human_click(copy_btn)
-            await human_delay(1.0, 1.5)
+            if await copy_btn.is_visible():
+                await human_click(copy_btn)
+                await human_delay(1.0, 1.5)
+                try:
+                    cb = await tr_page.evaluate("navigator.clipboard.readText()")
+                    if cb and re.match(r"^sk-[A-Za-z0-9_-]{20,}$", cb.strip()):
+                        api_key = cb.strip()
+                except Exception:
+                    pass
 
-            api_key = await tr_page.evaluate("navigator.clipboard.readText()")
-            if not api_key or not re.match(r"^sk-[A-Za-z0-9_-]{20,}$", api_key.strip()):
-                # Fallback: reveal dan baca dari cell tabel
+            if not api_key:
                 reveal_btn = tr_page.locator("button[aria-label='toggle token visibility']").first
                 if await reveal_btn.is_visible():
                     await human_click(reveal_btn)
@@ -133,16 +141,23 @@ class TokenRouterFlow(BaseFlow):
                     if m:
                         api_key = m.group(1).strip()
 
+            if not api_key:
+                # Coba cari dari page content
+                content = await tr_page.content()
+                keys = re.findall(r'(sk-[A-Za-z0-9_-]{20,})', content)
+                if keys:
+                    api_key = keys[0].strip()
+
             if not api_key or not re.match(r"^sk-[A-Za-z0-9_-]{20,}$", api_key.strip()):
                 raise Exception("Gagal mengekstrak valid API Key dari TokenRouter")
 
             print(f"[+] [TokenRouter] Berhasil mendapatkan API Key (Panjang: {len(api_key)})")
-            self.save_key(account["email"], api_key.strip(), "results/keys_tokenrouter.txt")
+            self.save_key(email, api_key.strip())
             self.mark_success(key_hint=api_key.strip()[:10] + "...")
             return True
 
         except Exception as e:
             err_msg = str(e)
             print(f"[-] [TokenRouter] Error: {err_msg}")
-            self.mark_failed(stage=self.state.get_account_state(account['email']).get('stage', 'unknown') if self.state else 'unknown', error=err_msg, retryable=True)
+            self.mark_failed("error", err_msg, retryable=True)
             return False

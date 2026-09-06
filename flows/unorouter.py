@@ -31,26 +31,36 @@ class UnoRouterFlow(BaseFlow):
         token_input = page.locator('input[name="cf-turnstile-response"]').first
 
         try:
-            await token_input.wait_for(state="attached", timeout=5000)
+            await token_input.wait_for(state="attached", timeout=6000)
         except Exception:
             return True
 
-        for _ in range(30):
+        for _ in range(40):
             try:
-                if await token_input.input_value():
+                val = await token_input.input_value()
+                if val and len(val) > 10:
                     print("[+] [UnoRouter] Turnstile berhasil ter-solve.")
                     return True
             except Exception:
-                return False
-            await asyncio.sleep(2)
+                pass
+
+            # Coba klik iframe Turnstile jika ada
+            try:
+                cf_frame = page.locator("iframe[src*='challenges.cloudflare.com']").first
+                if await cf_frame.is_visible():
+                    await cf_frame.click(timeout=1000)
+            except Exception:
+                pass
+
+            await asyncio.sleep(1.5)
 
         print("[-] [UnoRouter] Token Turnstile tidak terisi dalam 60 detik.")
         return False
 
     async def _register(self, page: Page, username: str, password: str) -> bool:
         print("[*] [UnoRouter] Membuka halaman registrasi...")
-        await page.goto("https://unorouter.com/en/register", wait_until="domcontentloaded")
-        await human_delay(2.0, 4.0)
+        await page.goto("https://unorouter.com/en/register", wait_until="domcontentloaded", timeout=45000)
+        await human_delay(2.0, 3.5)
 
         username_input = page.locator('input[name="username"]').first
         password_input = page.locator('input[name="password"]').first
@@ -62,7 +72,7 @@ class UnoRouterFlow(BaseFlow):
 
         submit_button = page.locator('button[type="submit"]:has-text("Create Account")').first
         await human_click(submit_button, pre_delay=0.4, post_delay=1.5)
-        await human_delay(5.0, 8.0)
+        await human_delay(4.0, 6.0)
 
         if "/en/login" in page.url:
             print("[+] [UnoRouter] Registrasi berhasil.")
@@ -73,11 +83,14 @@ class UnoRouterFlow(BaseFlow):
             print("[i] [UnoRouter] Username sudah terdaftar, melanjutkan ke login.")
             return True
 
+        if "/en/register" not in page.url:
+            return True
+
         raise RuntimeError(page_text.strip().splitlines()[0] if page_text.strip() else "register_failed")
 
     async def _login(self, page: Page, username: str, password: str) -> bool:
         print("[*] [UnoRouter] Membuka halaman login...")
-        await page.goto("https://unorouter.com/en/login", wait_until="domcontentloaded")
+        await page.goto("https://unorouter.com/en/login", wait_until="domcontentloaded", timeout=45000)
         await human_delay(1.5, 3.0)
 
         username_input = page.locator('input[name="username"]').first
@@ -90,15 +103,21 @@ class UnoRouterFlow(BaseFlow):
 
         submit_button = page.locator('button[type="submit"]:has-text("Sign In")').first
         await human_click(submit_button, pre_delay=0.4, post_delay=1.5)
-        try:
-            await page.wait_for_url("**/dashboard", timeout=20000)
-        except Exception:
-            page_text = await page.locator("body").inner_text()
-            print(f"[-] [UnoRouter] Login gagal: {page_text.strip().splitlines()[0] if page_text.strip() else 'tidak dialihkan ke dashboard'}")
-            raise RuntimeError("login_failed")
 
-        print("[+] [UnoRouter] Login berhasil.")
-        return True
+        for _ in range(25):
+            await page.wait_for_timeout(1000)
+            u = page.url
+            if "/dashboard" in u or "/token" in u:
+                print("[+] [UnoRouter] Login berhasil.")
+                return True
+
+        page_text = await page.locator("body").inner_text()
+        if "dashboard" in page.url or "token" in page.url:
+            print("[+] [UnoRouter] Login berhasil.")
+            return True
+
+        print(f"[-] [UnoRouter] Login gagal: {page_text.strip().splitlines()[0] if page_text.strip() else 'tidak dialihkan ke dashboard'}")
+        raise RuntimeError("login_failed")
 
     async def _extract_key_from_row(self, row, page: Page) -> Optional[str]:
         copy_button = row.locator('button[aria-label="Copy Key"]').first
@@ -116,15 +135,18 @@ class UnoRouterFlow(BaseFlow):
         if await reveal_button.is_visible():
             print("[*] [UnoRouter] Mereveal API key dari baris tabel...")
             await human_click(reveal_button, pre_delay=0.3, post_delay=0.8)
-            key_text = (await row.locator("code").first.inner_text()).strip()
-            if re.fullmatch(r"sk-[A-Za-z0-9]{40,}", key_text):
-                return key_text
+            try:
+                key_text = (await row.locator("code").first.inner_text()).strip()
+                if re.fullmatch(r"sk-[A-Za-z0-9]{40,}", key_text):
+                    return key_text
+            except Exception:
+                pass
 
         return None
 
     async def _create_key(self, context: BrowserContext, page: Page, username: str) -> Optional[str]:
         print("[*] [UnoRouter] Membuka halaman API key...")
-        await page.goto("https://unorouter.com/en/token", wait_until="domcontentloaded")
+        await page.goto("https://unorouter.com/en/token", wait_until="domcontentloaded", timeout=45000)
         await human_delay(1.5, 3.0)
 
         try:
@@ -132,28 +154,49 @@ class UnoRouterFlow(BaseFlow):
         except Exception:
             pass
 
+        # 1. Cek apakah sudah ada row key di tabel
+        rows = page.locator("tbody tr")
+        if await rows.count() > 0:
+            for r_idx in range(await rows.count()):
+                r = rows.nth(r_idx)
+                k = await self._extract_key_from_row(r, page)
+                if k:
+                    print(f"[+] [UnoRouter] Mengambil key yang sudah ada di tabel: {k[:8]}...")
+                    return k
+
+        # 2. Buat key baru
         create_key_button = page.locator('button:has-text("Create Key")').last
-        await human_click(create_key_button, pre_delay=0.4, post_delay=1.0)
+        if await create_key_button.is_visible():
+            await human_click(create_key_button, pre_delay=0.4, post_delay=1.0)
 
-        name_input = page.locator('input[name="name"]').first
-        await human_type(name_input, username)
+            name_input = page.locator('input[name="name"]').first
+            if await name_input.is_visible():
+                await human_type(name_input, username)
 
-        create_button = page.locator('button:has-text("Create"):not(:has-text("Key"))').last
-        await human_click(create_button, pre_delay=0.4, post_delay=2.0)
-        await human_delay(4.0, 6.0)
+            create_button = page.locator('button:has-text("Create"):not(:has-text("Key"))').last
+            if await create_button.is_visible():
+                await human_click(create_button, pre_delay=0.4, post_delay=2.0)
+                await human_delay(3.0, 5.0)
 
-        target_row = page.locator("tr", has_text=username).last
-        if not await target_row.is_visible():
-            print("[-] [UnoRouter] Baris API key baru tidak ditemukan.")
-            return None
+        # Cek row setelah create
+        rows = page.locator("tbody tr")
+        if await rows.count() > 0:
+            for r_idx in range(await rows.count()):
+                r = rows.nth(r_idx)
+                k = await self._extract_key_from_row(r, page)
+                if k:
+                    print(f"[+] [UnoRouter] API key berhasil diperoleh: {k[:8]}...")
+                    return k
 
-        api_key = await self._extract_key_from_row(target_row, page)
-        if not api_key:
-            print("[-] [UnoRouter] API key tidak valid atau gagal diambil.")
-            return None
+        # Fallback: cari dari seluruh content
+        content = await page.content()
+        keys = re.findall(r'(sk-[A-Za-z0-9]{45,})', content)
+        if keys:
+            print(f"[+] [UnoRouter] API key ditemukan dari content: {keys[0][:8]}...")
+            return keys[0]
 
-        print(f"[+] [UnoRouter] API key berhasil diperoleh: {api_key[:8]}...")
-        return api_key
+        print("[-] [UnoRouter] Baris API key tidak ditemukan.")
+        return None
 
     async def run_flow(self, context: BrowserContext, main_page: Optional[Page], account: Dict[str, str], index: int, total: int) -> bool:
         if not main_page:
@@ -181,48 +224,42 @@ class UnoRouterFlow(BaseFlow):
 
         stage = record.get("stage", "register")
         if stage not in ("register", "login", "key_create", "done"):
-            print(f"[i] Akun {email}: stage '{stage}' tidak valid, ulang dari register.")
             stage = "register"
-        if record.get("status") == "failed":
-            print(f"[i] Akun {email}: gagal sebelumnya di {stage} ({record.get('error')}), melanjutkan dari stage tsb.")
 
-        state.update(email, status="new", error=None)
+        password = account.get("password") or "qwertyui"
 
-        current_stage = stage
         try:
             if stage == "register":
-                await self._register(main_page, username, account["password"])
-                state.update(email, stage="login", registered_at=datetime.now(timezone.utc).isoformat())
-                current_stage = "login"
+                self.mark_stage("register")
+                await self._register(main_page, username, password)
+                stage = "login"
+                self.mark_stage("login")
 
-            await self._login(main_page, username, account["password"])
-            state.update(email, stage="key_create")
-            current_stage = "key_create"
+            if stage == "login":
+                self.mark_stage("login")
+                await self._login(main_page, username, password)
+                stage = "key_create"
+                self.mark_stage("key_create")
 
-            api_key = await self._create_key(context, main_page, username)
-            if not api_key:
-                raise RuntimeError("key_invalid")
+            if stage == "key_create":
+                self.mark_stage("key_create")
+                api_key = await self._create_key(context, main_page, username)
+                if not api_key:
+                    raise RuntimeError("api_key_extraction_failed")
 
-            key_hint = f"{api_key[:8]}...{api_key[-4:]}"
-            state.update(
-                email,
-                stage="done",
-                key_hint=key_hint,
-            )
-            self.mark_success(key_hint)
-        except Exception as error:
-            error_text = str(error)
-            retryable = error_text != "login_failed"
-            state.update(email, status="failed", stage=current_stage, error=error_text, retryable=retryable)
-            print(f"[-] [UnoRouter] Alur gagal pada {current_stage}: {error_text}")
+                if self.output_mode == "txt":
+                    self.save_key(email, api_key)
+                elif self.output_mode == "omni" and main_page:
+                    await save_api_key_to_omni(main_page, "unorouter", email, api_key)
+
+                self.mark_success(key_hint=f"{api_key[:8]}...")
+                print(f"[+] [UnoRouter] Sukses memproses akun {email}!")
+                return True
+
             return False
 
-        if self.output_mode == "txt":
-            self.save_key(email, api_key)
-        else:
-            saved = await save_api_key_to_omni(main_page, "UnoRouter", email, api_key)
-            await main_page.reload(wait_until="domcontentloaded")
-            await asyncio.sleep(2)
-            return saved
-
-        return True
+        except Exception as error:
+            error_message = str(error)
+            print(f"[-] [UnoRouter] Gagal pada stage '{stage}' untuk akun {email}: {error_message}")
+            self.mark_failed(stage, error_message, retryable=True)
+            return False
