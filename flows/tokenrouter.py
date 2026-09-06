@@ -30,6 +30,7 @@ class TokenRouterFlow(BaseFlow):
         api_key = None
 
         try:
+            self.mark_stage("navigate")
             print("[*] [TokenRouter] Membuka https://www.tokenrouter.com/...")
             await tr_page.goto("https://www.tokenrouter.com/", wait_until="domcontentloaded")
             await human_delay(1.0, 1.8)
@@ -47,6 +48,7 @@ class TokenRouterFlow(BaseFlow):
                 print("[*] [TokenRouter] Mencentang persetujuan Conditions of Use...")
                 await human_click(checkbox_btn)
 
+            self.mark_stage("login")
             # 4. Klik Google
             google_btn = tr_page.locator("button.tr-auth-social-button, button:has-text('Google')").first
             await google_btn.wait_for(state="visible", timeout=10000)
@@ -91,6 +93,7 @@ class TokenRouterFlow(BaseFlow):
             await human_click(submit_btn, pre_delay=0.4, post_delay=1.5)
             await human_delay(2.0, 3.0)
 
+            self.mark_stage("extract_key")
             # 10. Copy API key dari tombol copy baris table pertama
             print("[*] [TokenRouter] Mengambil token API Key...")
             copy_btn = tr_page.locator("button[aria-label='copy token key'], button[title*='copy']").first
@@ -115,6 +118,7 @@ class TokenRouterFlow(BaseFlow):
 
         except Exception as e:
             print(f"[-] [TokenRouter] Gagal mendapatkan key: {e}")
+            self.mark_failed("extract_key", f"pengambilan API key gagal: {e}", retryable=True)
             return None
 
     async def run_flow(self, context: BrowserContext, main_page: Optional[Page], account: Dict[str, str], index: int, total: int) -> bool:
@@ -123,13 +127,21 @@ class TokenRouterFlow(BaseFlow):
 
         api_key = await self._obtain_key(context, main_page, account)
         if not api_key:
+            if self.state is None:
+                self.mark_failed("extract_key", "API key tidak ditemukan setelah login", retryable=True)
             return False
 
+        self.mark_stage("save_key")
         if self.output_mode == "txt":
             self.save_key(account["email"], api_key)
+            self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
             return True
         else:
             saved = await save_api_key_to_omni(main_page, "tokenrouter", account["email"], api_key)
             await main_page.reload(wait_until="domcontentloaded")
             await asyncio.sleep(2)
+            if saved:
+                self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
+            else:
+                self.mark_failed("save_key", "AI-Omni menolak atau gagal menyimpan API key", retryable=True)
             return saved

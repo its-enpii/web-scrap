@@ -26,6 +26,7 @@ class QwenCloudFlow(BaseFlow):
     async def _obtain_key(self, context: BrowserContext, qwen_page: Page, account: Dict[str, str]) -> Optional[str]:
         api_key = None
         try:
+            self.mark_stage("navigate")
             print("[*] [QwenCloud] Membuka https://www.qwencloud.com...")
             await qwen_page.goto("https://www.qwencloud.com", wait_until="domcontentloaded")
             await human_delay(1.5, 2.5)
@@ -37,6 +38,7 @@ class QwenCloudFlow(BaseFlow):
                 await human_click(signup_btn, pre_delay=0.4, post_delay=1.0)
                 await human_delay(1.0, 2.0)
 
+            self.mark_stage("login")
             # 3. Klik Google login jika tersedia
             google_btn = qwen_page.locator("button:has-text('Google'), a:has-text('Google'), [aria-label*='Google']").first
             if await google_btn.is_visible():
@@ -66,6 +68,7 @@ class QwenCloudFlow(BaseFlow):
                 await human_click(gen_btn, pre_delay=0.4, post_delay=1.5)
                 await human_delay(2.0, 3.0)
 
+            self.mark_stage("extract_key")
             # 7. Salin API Key
             print("[*] [QwenCloud] Mengambil API Key...")
             key_el = qwen_page.locator("code, span:has-text('sk-ws-'), [data-slot='key-value']").first
@@ -88,6 +91,7 @@ class QwenCloudFlow(BaseFlow):
 
         except Exception as e:
             print(f"[-] [QwenCloud] Gagal mendapatkan key: {e}")
+            self.mark_failed("extract_key", f"pengambilan API key gagal: {e}", retryable=True)
             return None
 
     async def _add_qwen_to_omni(self, page: Page, account_email: str, api_key: str) -> bool:
@@ -137,13 +141,21 @@ class QwenCloudFlow(BaseFlow):
 
         api_key = await self._obtain_key(context, main_page, account)
         if not api_key:
+            if self.state is None:
+                self.mark_failed("extract_key", "API key tidak ditemukan setelah login", retryable=True)
             return False
 
+        self.mark_stage("save_key")
         if self.output_mode == "txt":
             self.save_key(account["email"], api_key)
+            self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
             return True
         else:
             saved = await self._add_qwen_to_omni(main_page, account["email"], api_key)
             await main_page.reload(wait_until="domcontentloaded")
             await asyncio.sleep(2)
+            if saved:
+                self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
+            else:
+                self.mark_failed("save_key", "AI-Omni menolak atau gagal menyimpan API key", retryable=True)
             return saved

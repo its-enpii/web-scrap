@@ -1,4 +1,40 @@
-﻿[KIRO]
+[Account State Tracking]
+
+Setiap akun dapat memiliki rekaman state di `state/<provider>.json`. Format record tetap:
+
+```json
+{
+  "status": "new | in-progress | success | failed",
+  "stage": "navigate | login | register | extract_key | save_key | done",
+  "error": "pesan kesalahan informatif atau null",
+  "retryable": true,
+  "attempts": 0,
+  "key_hint": "prefix...suffix"
+}
+```
+
+`main.py` memanggil `attach_state(provider)` sebelum flow berjalan. Semua flow memakai helper `mark_stage`, `mark_success`, dan `mark_failed` dari `BaseFlow`. Helper ini menjadi no-op tanpa state, sehingga pemakaian flow secara langsung tetap kompatibel.
+
+Semantik skip/resume:
+
+- `status == "success"`: dilewati karena key sudah ada.
+- `status == "failed"` dengan `retryable == false`: dilewati dan dilaporkan `perlu tindakan manual: <error>`.
+- `attempts >= MAX_ATTEMPTS`: dilewati dengan peringatan batas percobaan.
+- Setiap eksekusi menaikkan `attempts`. Kegagalan sementara dapat diulang otomatis; `MAX_ATTEMPTS` default `3` dan dapat diubah melalui environment variable.
+
+Klasifikasi retryable:
+
+- `true`: timeout, masalah jaringan, captcha tidak selesai, elemen tidak ditemukan, rate limit, atau penyimpanan key gagal.
+- `false`: kredensial ditolak server, akun/email terblokir, atau email verifikasi gagal permanen.
+
+Lihat status tanpa menjalankan browser:
+
+```bash
+.venv/bin/python main.py --status        # semua provider yang punya state/*.json
+.venv/bin/python main.py --status unorouter
+```
+
+[KIRO]
 1. Buka https://ai-omni.enpiistudio.com/login
 2. Isikan pass "its.enpii-118" pada input (<input id="_r_0_" placeholder="Masukkan kata sandi Anda untuk melanjutkan" required="" aria-required="true" class="w-full py-2 px-3 text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-control placeholder-text-muted/60 focus:ring-1 focus:ring-accent/30 focus:border-accent/50 focus:outline-none transition-all shadow-inner disabled:opacity-50 disabled:cursor-not-allowed text-[16px] sm:text-sm" type="password" value="">)
 3. Klik submit (<button type="submit" class="inline-flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 bg-[image:var(--grad-brand)] text-white shadow-sm hover:brightness-105 px-4 rounded-control w-full h-11 text-sm font-medium">Lanjutkan</button>)

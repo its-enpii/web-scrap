@@ -30,6 +30,7 @@ class OpencodeZenFlow(BaseFlow):
         api_key = None
 
         try:
+            self.mark_stage("navigate")
             print("[*] [Opencode Zen] Membuka https://opencode.ai/zen...")
             await zen_page.goto("https://opencode.ai/zen", wait_until="domcontentloaded")
             await human_delay(1.0, 1.8)
@@ -49,10 +50,12 @@ class OpencodeZenFlow(BaseFlow):
                 await human_click(google_btn, pre_delay=0.4, post_delay=1.0)
                 await zen_page.wait_for_load_state("domcontentloaded")
 
+            self.mark_stage("login")
             # 4-7. Google login
             await fill_google_login(zen_page, account)
 
             # 8. Copy key di workspace
+            self.mark_stage("extract_key")
             print("[*] [Opencode Zen] Menunggu halaman workspace / tombol Copy Key muncul...")
             copy_btn = zen_page.locator(
                 "button[title*='Copy API key'], button:has-text('Copy Key'), button[aria-label*='copy'], [data-slot='key-display'] button"
@@ -88,6 +91,7 @@ class OpencodeZenFlow(BaseFlow):
 
         except Exception as e:
             print(f"[-] [Opencode Zen] Gagal mendapatkan key: {e}")
+            self.mark_failed("extract_key", f"pengambilan API key gagal: {e}", retryable=True)
             return None
 
     async def run_flow(self, context: BrowserContext, main_page: Optional[Page], account: Dict[str, str], index: int, total: int) -> bool:
@@ -96,13 +100,21 @@ class OpencodeZenFlow(BaseFlow):
 
         api_key = await self._obtain_key(context, main_page, account)
         if not api_key:
+            if self.state is None:
+                self.mark_failed("extract_key", "API key tidak ditemukan setelah login", retryable=True)
             return False
 
+        self.mark_stage("save_key")
         if self.output_mode == "txt":
             self.save_key(account["email"], api_key)
+            self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
             return True
         else:
             saved = await save_api_key_to_omni(main_page, "opencode-zen", account["email"], api_key)
             await main_page.reload(wait_until="domcontentloaded")
             await asyncio.sleep(2)
+            if saved:
+                self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
+            else:
+                self.mark_failed("save_key", "AI-Omni menolak atau gagal menyimpan API key", retryable=True)
             return saved

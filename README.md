@@ -5,6 +5,8 @@ Sistem otomasi modular berbasis **Python & Playwright** untuk melakukan registra
 ---
 
 ## Fitur Utama
+- **Account State Tracking**: Status per akun tersimpan di `state/<provider>.json` dengan field `status`, `stage`, `error`, `retryable`, `attempts`, dan `key_hint`.
+- **Skip/Resume Otomatis**: Akun sukses dilewati; kegagalan non-retryable dilaporkan `perlu tindakan manual: <error>`; eksekusi berhenti saat mencapai `MAX_ATTEMPTS` (default `3`, dapat diubah via environment variable).
 
 - **Multi-Provider Support**: Mendukung 7 provider AI (`kiro_omni`, `opencode_zen`, `openrouter`, `tokenrouter`, `bai`, `qwencloud`, `unorouter`) dan opsi untuk menjalankan **SEMUA** provider sekaligus (`all`).
 - **Opsi Output Fleksibel**:
@@ -115,6 +117,10 @@ python main.py --flow bai --output txt --output-file results/custom_bai.txt
 
 # 5. Opsi proxy dan headless:
 python main.py --flow opencode_zen --output txt --headless --proxy http://user:pass@127.0.0.1:8080
+
+# 6. Melihat status tanpa browser:
+python main.py --status
+python main.py --status unorouter
 ```
 
 ---

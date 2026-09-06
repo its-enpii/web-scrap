@@ -27,6 +27,7 @@ class BAIFlow(BaseFlow):
         api_key = None
 
         try:
+            self.mark_stage("navigate")
             print(f"[*] [BAI] Membuka https://chat.b.ai/chat...")
             await bai_page.goto("https://chat.b.ai/chat", wait_until="domcontentloaded")
             await human_delay(1.0, 1.8)
@@ -54,8 +55,9 @@ class BAIFlow(BaseFlow):
                 except Exception:
                     if not popup_page.is_closed():
                         await popup_page.close()
-            except Exception:
-                await fill_google_login(bai_page, account)
+            except Exception as auth_error:
+                self.mark_failed("login", f"Google login gagal: {auth_error}", retryable=True)
+                return None
 
             # 6. Buka halaman https://chat.b.ai/key
             print("[*] [BAI] Menuju halaman API Key (https://chat.b.ai/key)...")
@@ -93,6 +95,7 @@ class BAIFlow(BaseFlow):
                     if match:
                         api_key = match.group(1).strip()
 
+            self.mark_stage("extract_key")
             if api_key:
                 print(f"[+] [BAI] Berhasil mendapatkan API Key: {api_key[:10]}...")
             else:
@@ -109,6 +112,7 @@ class BAIFlow(BaseFlow):
 
         except Exception as e:
             print(f"[-] [BAI] Terjadi error saat generate API Key di chat.b.ai: {e}")
+            self.mark_failed("extract_key", f"generate API key gagal: {e}", retryable=True)
             return None
 
     async def run_flow(self, context: BrowserContext, main_page: Optional[Page], account: Dict[str, str], index: int, total: int) -> bool:
@@ -118,13 +122,21 @@ class BAIFlow(BaseFlow):
         api_key = await self._obtain_bai_api_key(context, main_page, account)
         if not api_key:
             print(f"[-] Gagal mendapatkan API key untuk {account['email']}")
+            if self.state is None:
+                self.mark_failed("extract_key", "API key tidak ditemukan setelah generate", retryable=True)
             return False
 
+        self.mark_stage("save_key")
         if self.output_mode == "txt":
             self.save_key(account["email"], api_key)
+            self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
             return True
         else:
             saved = await save_api_key_to_omni(main_page, "openai-compatible-chat", account["email"], api_key)
             await main_page.reload(wait_until="domcontentloaded")
             await asyncio.sleep(2)
+            if saved:
+                self.mark_success(f"{api_key[:10]}...{api_key[-4:]}")
+            else:
+                self.mark_failed("save_key", "AI-Omni menolak atau gagal menyimpan API key", retryable=True)
             return saved

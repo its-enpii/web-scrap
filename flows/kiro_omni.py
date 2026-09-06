@@ -23,6 +23,7 @@ class KiroOmniFlow(BaseFlow):
         return True
 
     async def _get_device_link(self, page: Page) -> Optional[str]:
+        self.mark_stage("navigate")
         print("[*] Mengklik 'Tambahkan'...")
         add_btn = page.locator("button:has-text('Tambahkan'), button:has-text('Add')").first
         await human_click(add_btn, pre_delay=0.4, post_delay=0.8)
@@ -44,6 +45,7 @@ class KiroOmniFlow(BaseFlow):
 
     async def _handle_google_login(self, page: Page, device_url: str, account: Dict[str, str]) -> bool:
         try:
+            self.mark_stage("login")
             print(f"[*] Menavigasi ke URL otorisasi Kiro Dev ({account['email']})...")
             await page.goto(device_url, wait_until="domcontentloaded")
             await human_delay(1.0, 2.0)
@@ -70,6 +72,7 @@ class KiroOmniFlow(BaseFlow):
 
         except Exception as err:
             print(f"[-] Gagal pada akun {account['email']}: {err}")
+            self.mark_failed("login", f"Google/Kiro authorization gagal: {err}", retryable=True)
             try:
                 done_btn = page.locator("button:has-text('Done')").first
                 if await done_btn.is_visible(timeout=5000):
@@ -87,12 +90,15 @@ class KiroOmniFlow(BaseFlow):
         device_url = await self._get_device_link(main_page)
         if not device_url:
             print(f"[-] Gagal mendapatkan device link untuk {account['email']}")
+            self.mark_failed("navigate", "device authorization link tidak ditemukan", retryable=True)
             return False
 
         # Langsung gunakan main_page yang sama (1 Single Window)
         success = await self._handle_google_login(main_page, device_url, account)
-        if success and self.output_mode == "txt":
-            self.save_key(account["email"], "connected_via_device_oauth")
+        if success:
+            if self.output_mode == "txt":
+                self.save_key(account["email"], "connected_via_device_oauth")
+            self.mark_success("connected_via_device_oauth")
 
         await human_delay(1.5, 2.5)
         return success

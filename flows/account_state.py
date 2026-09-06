@@ -57,6 +57,16 @@ class AccountState:
     def all(self) -> Dict[str, Dict]:
         return self._data.get("accounts", {})
 
+    @staticmethod
+    def list_providers() -> List[str]:
+        if not os.path.isdir("state"):
+            return []
+        return [
+            filename[:-5]
+            for filename in os.listdir("state")
+            if filename.endswith(".json") and os.path.isfile(os.path.join("state", filename))
+        ]
+
     def summary(self) -> List[str]:
         lines = []
         for email, record in self.all().items():

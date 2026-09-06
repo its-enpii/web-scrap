@@ -1,11 +1,10 @@
 import asyncio
 import re
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from playwright.async_api import BrowserContext, Page
 
-from .account_state import AccountState, derive_username
+from .account_state import derive_username
 from .base import BaseFlow
 from .human_helper import human_click, human_delay, human_type
 from .omni_helper import ensure_omni_logged_in, save_api_key_to_omni
@@ -159,7 +158,10 @@ class UnoRouterFlow(BaseFlow):
             main_page = await context.new_page()
 
         email = account["email"]
-        state = AccountState("unorouter")
+        if self.state is None:
+            self.attach_state("unorouter")
+        state = self.state
+        self.set_current_account(email)
         record = state.get(email)
         username = record.get("username") or derive_username(email)
         state.update(email, username=username)
@@ -196,15 +198,13 @@ class UnoRouterFlow(BaseFlow):
             if not api_key:
                 raise RuntimeError("key_invalid")
 
+            key_hint = f"{api_key[:8]}...{api_key[-4:]}"
             state.update(
                 email,
                 stage="done",
-                status="success",
-                retryable=True,
-                key_hint=f"{api_key[:8]}...{api_key[-4:]}",
-                key_created_at=datetime.now(timezone.utc).isoformat(),
-                error=None,
+                key_hint=key_hint,
             )
+            self.mark_success(key_hint)
         except Exception as error:
             error_text = str(error)
             retryable = error_text != "login_failed"

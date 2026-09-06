@@ -23,6 +23,7 @@ ACCOUNTS_FILE = os.getenv("ACCOUNTS_FILE", "accounts.txt")
 PROXIES_FILE = os.getenv("PROXIES_FILE", "proxies.txt")
 DEFAULT_OUTPUT_DIR = os.getenv("OUTPUT_DIR", "results")
 DEFAULT_ENGINE = os.getenv("BROWSER_ENGINE", "camoufox" if CAMOUFOX_AVAILABLE else "chromium")
+MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "3"))
 
 def parse_accounts(file_path: str) -> List[Dict[str, str]]:
     if not os.path.exists(file_path):
@@ -95,19 +96,44 @@ def select_output_mode_interactive() -> str:
         print("[!] Pilihan tidak valid, silakan masukkan 1 atau 2.")
 
 def print_provider_status(provider: str):
-    if provider not in AVAILABLE_FLOWS:
+    if provider != "all" and provider not in AVAILABLE_FLOWS:
         print(f"[!] Flow tidak terdaftar: {provider}")
         print(f"[*] Flow yang tersedia: {', '.join(AVAILABLE_FLOWS.keys())}")
         return
 
-    state = AccountState(provider)
-    print(f"\n[i] Status akun untuk {AVAILABLE_FLOWS[provider].name}:")
-    lines = state.summary()
-    if not lines:
-        print("[i] Belum ada status akun tersimpan.")
+    providers = AccountState.list_providers() if provider == "all" else [provider]
+    if not providers:
+        print("[i] Belum ada file state/*.json.")
         return
-    for line in lines:
-        print(f"[i] {line}")
+
+    for provider_name in providers:
+        if provider_name not in AVAILABLE_FLOWS:
+            print(f"\n[i] Status akun untuk {provider_name}:")
+            print("[i] Provider tidak terdaftar di AVAILABLE_FLOWS.")
+            continue
+        state = AccountState(provider_name)
+        print(f"\n[i] Status akun untuk {AVAILABLE_FLOWS[provider_name].name}:")
+        lines = state.summary()
+        if not lines:
+            print("[i] Belum ada status akun tersimpan.")
+            continue
+        for line in lines:
+            print(f"[i] {line}")
+
+def should_skip_account_state(record: Optional[Dict]) -> Optional[str]:
+    if not record:
+        return None
+    status = record.get("status")
+    if status == "success":
+        return f"sudah sukses, key ada ({record.get('key_created_at') or 'tanpa timestamp'})"
+    if status == "failed" and record.get("retryable") is False:
+        return f"perlu tindakan manual: {record.get('error') or 'tidak ada detail kegagalan'}"
+    if record.get("attempts", 0) >= MAX_ATTEMPTS:
+        return (
+            f"batas percobaan tercapai ({record.get('attempts', 0)}/{MAX_ATTEMPTS}); "
+            "periksa atau reset state sebelum mencoba lagi"
+        )
+    return None
 
 async def launch_smart_chromium(playwright_instance, is_headless: bool) -> Browser:
     args = [
@@ -298,6 +324,16 @@ async def run_automation(
             flow_inst = flow_instances[f_key]
             print(f"\n---> Menjalankan Flow: {flow_inst.name} ({f_key}) untuk {acc['email']}")
 
+            state = flow_inst.attach_state(f_key)
+            flow_inst.set_current_account(acc["email"])
+            record = state.get(acc["email"])
+            skip_reason = should_skip_account_state(record)
+            if skip_reason:
+                print(f"[SKIP] {acc['email']} di {flow_inst.name}: {skip_reason}")
+                continue
+
+            state.update(acc["email"], attempts=record.get("attempts", 0) + 1)
+
             needs_omni = output_mode == "omni" or f_key == "kiro_omni"
 
             try:
@@ -312,12 +348,21 @@ async def run_automation(
                     needs_omni=needs_omni
                 )
                 if ok:
+                    if state.get(acc["email"]).get("status") != "success":
+                        flow_inst.mark_success()
                     stats[f_key]["success"] += 1
                     print(f"[SUCCESS] {acc['email']} berhasil di {flow_inst.name}")
                 else:
+                    if state.get(acc["email"]).get("status") != "failed":
+                        flow_inst.mark_failed(
+                            f_key,
+                            f"flow {f_key} selesai tanpa detail kegagalan",
+                            retryable=True,
+                        )
                     stats[f_key]["failed"] += 1
                     print(f"[FAILED] {acc['email']} gagal di {flow_inst.name}")
             except Exception as e:
+                flow_inst.mark_failed("run_flow", f"unhandled exception: {e}", retryable=True)
                 print(f"[ERROR] Exception pada {acc['email']} di {flow_inst.name}: {e}")
                 stats[f_key]["failed"] += 1
 
@@ -341,7 +386,12 @@ def main():
     parser.add_argument("--proxy", help="Single proxy override (contoh: http://user:pass@host:port)", default=None)
     parser.add_argument("--engine", help="Browser engine ('camoufox' untuk stealth anti-turnstile atau 'chromium')", choices=["camoufox", "chromium"], default=DEFAULT_ENGINE)
     parser.add_argument("--headless", action="store_true", help="Jalankan browser tanpa tampilan GUI")
-    parser.add_argument("--status", help="Tampilkan status akun provider tanpa membuka browser (contoh: unorouter)", default=None)
+    parser.add_argument(
+        "--status",
+        nargs="?",
+        const="all",
+        help="Tampilkan status akun semua provider atau satu provider tanpa membuka browser",
+    )
 
     args = parser.parse_args()
 
