@@ -39,19 +39,27 @@ async def ensure_omni_logged_in(page: Page, config: Dict[str, Any]) -> bool:
     return True
 
 async def navigate_to_provider(page: Page, provider_title_or_href: str) -> bool:
-    print(f"[*] [AI-Omni] Menuju menu Penyedia...")
+    print(f"[*] [AI-Omni] Menuju menu Penyedia ({provider_title_or_href})...")
+    target_slug = provider_title_or_href.lower().replace(" ", "").replace("_", "")
     
-    if "/dashboard/providers" not in page.url or page.url.endswith("/providers"):
-        provider_menu = page.locator("a[href='/dashboard/providers']").first
-        if await provider_menu.is_visible():
-            await human_click(provider_menu, pre_delay=0.3, post_delay=0.8)
-        else:
-            await page.goto("https://ai-omni.enpiistudio.com/dashboard/providers", wait_until="domcontentloaded")
-            await human_delay(0.8, 1.5)
+    # Tunggu URL stabil
+    await page.wait_for_timeout(2000)
+    
+    # Buka langsung dashboard provider jika belum
+    target_url = f"https://ai-omni.enpiistudio.com/dashboard/providers/{target_slug}"
+    try:
+        await page.goto(target_url, wait_until="domcontentloaded", timeout=15000)
+        await page.wait_for_timeout(2000)
+        return True
+    except Exception:
+        pass
 
-    print(f"[*] [AI-Omni] Memilih provider: {provider_title_or_href}...")
+    # Fallback ke /dashboard/providers lalu klik card
+    await page.goto("https://ai-omni.enpiistudio.com/dashboard/providers", wait_until="domcontentloaded")
+    await page.wait_for_timeout(2000)
+
     card_loc = page.locator(
-        f"a[href*='{provider_title_or_href}'], a:has-text('{provider_title_or_href}')"
+        f"a[href*='{target_slug}'], a:has-text('{provider_title_or_href}')"
     ).first
     await card_loc.wait_for(state="visible", timeout=12000)
     await human_click(card_loc, pre_delay=0.4, post_delay=1.0)
