@@ -388,10 +388,10 @@ async def run_automation(
             await asyncio.sleep(flow_delay)
 
         # Jeda human-like per akun
-        if i < total_acc:
+        if acc_idx < len(accounts):
             import random
             acc_delay = random.uniform(8.0, 15.0)
-            print(f"[*] Jeda antar akun ({i}/{total_acc}): {acc_delay:.1f}s...\n")
+            print(f"[*] Jeda antar akun ({acc_idx}/{len(accounts)}): {acc_delay:.1f}s...\n")
             await asyncio.sleep(acc_delay)
 
     print(f"\n==========================================")
