@@ -381,7 +381,18 @@ async def run_automation(
                 print(f"[ERROR] Exception pada {acc['email']} di {flow_inst.name}: {e}")
                 stats[f_key]["failed"] += 1
 
-            await asyncio.sleep(1)
+            # Jeda human-like per iterasi flow
+            import random
+            flow_delay = random.uniform(3.0, 7.0)
+            print(f"[*] Jeda antar flow: {flow_delay:.1f}s...")
+            await asyncio.sleep(flow_delay)
+
+        # Jeda human-like per akun
+        if i < total_acc:
+            import random
+            acc_delay = random.uniform(8.0, 15.0)
+            print(f"[*] Jeda antar akun ({i}/{total_acc}): {acc_delay:.1f}s...\n")
+            await asyncio.sleep(acc_delay)
 
     print(f"\n==========================================")
     print(f"           RINGKASAN KESELURUHAN          ")
