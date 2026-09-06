@@ -4,121 +4,232 @@ from typing import Dict, Any, Optional
 from playwright.async_api import BrowserContext, Page
 from .base import BaseFlow
 from .google_auth_helper import fill_google_login
-from .omni_helper import ensure_omni_logged_in, save_api_key_to_omni
-from .human_helper import human_type, human_click, human_delay
+from .human_helper import human_click, human_type, human_delay
+
 
 class OpenRouterFlow(BaseFlow):
+    """
+    Alur registrasi & pengambilan API Key OpenRouter (openrouter.ai).
+    Menggunakan sign-in dengan Google OAuth via Clerk.
+    """
+
     name = "OpenRouter (openrouter.ai -> AI-Omni)"
-    description = "Login ke OpenRouter via Google OAuth Clerk, buat API Key di /settings/keys, dan daftarkan ke AI-Omni atau simpan ke file."
+    flow_name = "openrouter"
 
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-        self.base_url = config.get("omni_url", "https://ai-omni.enpiistudio.com/login")
-        self.omni_password = config.get("omni_password", "its.enpii-118")
-        if not self.config.get("output_file") or self.config.get("output_file") == "keys.txt":
-            self.output_file = "keys_openrouter.txt"
+    async def _obtain_openrouter_api_key(
+        self, context: BrowserContext, account: Dict[str, Any]
+    ) -> Optional[str]:
+        email = account.get("email", "")
+        print(f"\n[2/1] Memproses Akun OpenRouter: {email}")
 
-    async def setup(self, context: BrowserContext, main_page: Optional[Page]) -> bool:
-        if self.output_mode == "omni" and main_page:
-            return await ensure_omni_logged_in(main_page, self.config)
-        return True
-
-    async def _obtain_openrouter_api_key(self, context: BrowserContext, or_page: Page, account: Dict[str, str]) -> Optional[str]:
+        or_page: Page = context.pages[0] if context.pages else await context.new_page()
         api_key = None
-        email = account["email"]
 
         try:
-            # 1. Buka OpenRouter
+            # 1. Buka OpenRouter sign-in dengan redirect langsung ke keys page
             self.mark_stage("navigate")
-            print("[*] [OpenRouter] Membuka https://openrouter.ai...")
-            await or_page.goto("https://openrouter.ai", wait_until="domcontentloaded")
-            await human_delay(2.0, 3.0)
+            print("[*] [OpenRouter] Membuka https://openrouter.ai/sign-in ...")
+            await or_page.goto(
+                "https://openrouter.ai/sign-in?redirect_url=https%3A%2F%2Fopenrouter.ai%2Fworkspaces%2Fdefault%2Fkeys",
+                wait_until="domcontentloaded",
+                timeout=60000,
+            )
+            await human_delay(2.0, 3.5)
 
-            # 2. Buka Modal Sign Up / Sign In
-            signup_btn = or_page.locator("header button:has-text('Sign Up'), button:has-text('Sign Up'), a:has-text('Sign Up')").first
-            if await signup_btn.is_visible():
-                self.mark_stage("open_modal")
-                print("[*] [OpenRouter] Mengklik tombol 'Sign Up'...")
-                await human_click(signup_btn)
-                await human_delay(1.5, 2.5)
-
-                # 3. Klik Tombol Google OAuth di Modal Clerk
-                self.mark_stage("click_google")
-                google_btn = or_page.locator("button.cl-socialButtonsIconButton__google, button.cl-button__google").first
-                await google_btn.wait_for(state="visible", timeout=12000)
-                print("[*] [OpenRouter] Mengklik tombol Google OAuth Clerk...")
-                await human_click(google_btn)
-                await or_page.wait_for_load_state("domcontentloaded")
-
-                # 4. Handle Google Login
-                await fill_google_login(or_page, account)
-                await human_delay(2.0, 3.0)
-
-                # 5. Tunggu protect-check & callback redirect
-                print("[*] [OpenRouter] Menunggu verifikasi Clerk protect-check...")
-                for _ in range(35):
-                    await or_page.wait_for_timeout(1000)
-                    url = or_page.url
-                    if "protect-check" not in url and "sso-callback" not in url and "accounts.google" not in url:
-                        break
-
-            # 6. Buka halaman keys
-            self.mark_stage("open_keys_page")
-            print("[*] [OpenRouter] Menuju halaman API Keys (https://openrouter.ai/settings/keys)...")
-            await or_page.goto("https://openrouter.ai/settings/keys", wait_until="domcontentloaded")
-            await human_delay(2.5, 3.5)
-
-            # 7. Klik Create Key
-            self.mark_stage("create_key")
-            create_btn = or_page.locator("button:has-text('Create Key'), button:has-text('Create API Key'), button:has-text('Create')").first
-            await create_btn.wait_for(state="visible", timeout=15000)
-            print("[*] [OpenRouter] Mengklik 'Create Key'...")
-            await human_click(create_btn, pre_delay=0.4, post_delay=1.0)
+            # 2. Klik tombol Google OAuth di form Clerk
+            self.mark_stage("click_google_oauth")
+            google_btn = or_page.locator(
+                "button.cl-socialButtonsIconButton__google, button.cl-button__google, button[data-provider='google']"
+            ).first
+            await google_btn.wait_for(state="visible", timeout=45000)
             await human_delay(1.5, 2.5)
 
-            # Isi nama key jika ada modal
-            name_in = or_page.locator("input[placeholder*='Name' i], [role='dialog'] input[type='text']").first
-            if await name_in.is_visible():
-                key_name = email.split("@")[0]
-                await human_type(name_in, key_name)
-                await human_delay(0.5, 1.0)
-                sub_btn = or_page.locator("[role='dialog'] button:has-text('Create'), [role='dialog'] button[type='submit']").last
-                await human_click(sub_btn)
-                await human_delay(2.5, 3.5)
+            print("[*] [OpenRouter] Mengklik tombol Google OAuth Clerk...")
+            try:
+                await google_btn.click(timeout=5000, force=True)
+            except Exception:
+                await or_page.evaluate("""() => {
+                    const btn = document.querySelector('button.cl-socialButtonsIconButton__google, button.cl-button__google');
+                    if (btn) btn.click();
+                }""")
 
-            # 8. Ekstrak API Key dari modal atau clipboard
-            self.mark_stage("extract_key")
-            copy_btn = or_page.locator("button:has-text('Copy'), [role='dialog'] button[aria-label*='copy' i]").first
-            if await copy_btn.is_visible():
-                await human_click(copy_btn, pre_delay=0.2, post_delay=0.5)
+            # 3. Handle navigasi ke Google Sign-In (popup atau tab yang sama)
+            self.mark_stage("google_oauth")
+            google_page: Optional[Page] = None
+            for _ in range(40):
+                await or_page.wait_for_timeout(500)
+                if "accounts.google.com" in or_page.url:
+                    google_page = or_page
+                    break
+                for pg in context.pages:
+                    if pg is not or_page and "accounts.google.com" in pg.url:
+                        google_page = pg
+                        break
+                if google_page:
+                    break
+
+            if not google_page:
+                raise RuntimeError("Halaman Google Sign In tidak terbuka setelah klik OAuth")
+
+            print("[*] [OpenRouter] Google OAuth terbuka, mengisi kredensial...")
+            await fill_google_login(google_page, account)
+
+            # Tutup tab popup jika Google terbuka di popup terpisah
+            if google_page is not or_page:
                 try:
-                    cb = await or_page.evaluate("navigator.clipboard.readText()")
-                    if cb and cb.strip().startswith("sk-or-"):
-                        api_key = cb.strip()
+                    await google_page.wait_for_event("close", timeout=30000)
+                except Exception:
+                    if not google_page.is_closed():
+                        await google_page.close()
+
+            # 4. Tunggu callback & redirect protect-check Clerk
+            self.mark_stage("wait_protect_check")
+            print("[*] [OpenRouter] Menunggu callback & protect-check Clerk...")
+            for _ in range(120):
+                await or_page.wait_for_timeout(1000)
+                u = or_page.url
+                if (
+                    "protect-check" not in u
+                    and "sso-callback" not in u
+                    and "accounts.google" not in u
+                ):
+                    break
+
+            await human_delay(3.0, 4.5)
+            print(f"[*] [OpenRouter] Landing: {or_page.url[:120]}")
+
+            # 5. Handle Form Legal / Missing fields jika ada (sign-up/continue)
+            if "/sign-up/continue" in or_page.url:
+                print("[*] [OpenRouter] Halaman sign-up/continue terdeteksi...")
+                try:
+                    em_in = or_page.locator("input[name='emailAddress'], input[id='emailAddress-field']").first
+                    if await em_in.is_visible():
+                        await human_type(em_in, email)
+                        await human_delay(0.5, 0.8)
                 except Exception:
                     pass
+                try:
+                    pw_in = or_page.locator("input[name='password'], input[id='password-field']").first
+                    if await pw_in.is_visible():
+                        await human_type(pw_in, account.get("password", ""))
+                        await human_delay(0.5, 0.8)
+                except Exception:
+                    pass
+                try:
+                    cb = or_page.locator("input[type='checkbox'], [role='checkbox']").first
+                    if await cb.is_visible():
+                        await human_click(cb, pre_delay=0.2, post_delay=0.4)
+                except Exception:
+                    pass
+                cont = or_page.locator("button:has-text('Continue')").first
+                if await cont.is_visible():
+                    await human_click(cont)
+                    print("[*] [OpenRouter] Form continue disubmit...")
+                    for _ in range(40):
+                        await or_page.wait_for_timeout(1000)
+                        if "/sign-up/continue" not in or_page.url:
+                            break
+                    await human_delay(2.0, 3.5)
 
-            if not api_key:
-                val_in = or_page.locator("[role='dialog'] input[value^='sk-or-']").first
-                if await val_in.is_visible():
-                    api_key = await val_in.get_attribute("value")
+            # 6. Wizard "Welcome to OpenRouter": pilih Individual -> Next
+            h1 = ""
+            try:
+                h1 = await or_page.locator("h1").first.text_content() or ""
+            except Exception:
+                pass
 
+            if "Welcome to OpenRouter" in h1:
+                print("[*] [OpenRouter] Wizard onboarding terdeteksi — memilih Personal/Individual...")
+                await human_delay(1.5, 2.5)
+                try:
+                    opt = or_page.locator("[role=radio], input[type=radio], label").first
+                    if await opt.is_visible():
+                        await human_click(opt, pre_delay=0.3, post_delay=0.5)
+                except Exception:
+                    pass
+                nxt = or_page.locator("button:has-text('Next'), button:has-text('Continue'), button:has-text('Get Started')").first
+                if await nxt.is_visible():
+                    await human_click(nxt)
+                    print("[*] [OpenRouter] Wizard step 1 selesai...")
+                    await human_delay(3.5, 5.0)
+
+            # 7. Ekstraksi API Key dari konten halaman / modal workspace-ready
+            self.mark_stage("extract_key")
+            print("[*] [OpenRouter] Mencari API Key (sk-or-v1-...)...")
+
+            # Coba cari dari page content
+            content = await or_page.content()
+            m = re.search(r'(sk-or-v1-[A-Za-z0-9_-]{20,})', content)
+            if m:
+                api_key = m.group(1)
+                print(f"[+] [OpenRouter] Key ditemukan dari page content: {api_key[:14]}...{api_key[-4:]}")
+
+            # Coba cari dari body.innerText
             if not api_key:
+                body_txt = await or_page.evaluate("() => document.body.innerText")
+                m = re.search(r'(sk-or-v1-[A-Za-z0-9_-]{20,})', body_txt)
+                if m:
+                    api_key = m.group(1)
+                    print(f"[+] [OpenRouter] Key ditemukan dari body text: {api_key[:14]}...{api_key[-4:]}")
+
+            # 8. Jika belum dapat, dismiss wizard & buka keys page langsung
+            if not api_key:
+                # Dismiss modal wizard jika ada
+                for _ in range(6):
+                    modal_exists = await or_page.evaluate("() => !!document.querySelector('.fixed.inset-0')")
+                    if not modal_exists:
+                        break
+                    clicked = False
+                    for label in ["I'll do this later", "Next", "Continue", "Done", "Finish", "Skip", "Close"]:
+                        try:
+                            b = or_page.locator(f".fixed.inset-0 button:has-text(\"{label}\"), .fixed.inset-0 a:has-text(\"{label}\")").first
+                            if await b.is_visible():
+                                await human_click(b)
+                                clicked = True
+                                await human_delay(2.0, 3.0)
+                                break
+                        except Exception:
+                            continue
+                    if not clicked:
+                        break
+
+                # Buka halaman keys
+                print("[*] [OpenRouter] Menuju halaman API Keys (workspaces/default/keys)...")
+                await or_page.goto("https://openrouter.ai/workspaces/default/keys", wait_until="domcontentloaded")
+                await human_delay(2.5, 3.5)
+
+                # Klik New Key
+                new_key_btn = or_page.locator("button:has-text('New Key'), a:has-text('New Key'), button:has-text('Create Key')").first
+                if await new_key_btn.is_visible():
+                    print("[*] [OpenRouter] Mengklik 'New Key'...")
+                    await human_click(new_key_btn, pre_delay=0.4, post_delay=1.0)
+                    await human_delay(1.5, 2.5)
+
+                    name_in = or_page.locator("[role='dialog'] input, .fixed.inset-0 input").first
+                    if await name_in.is_visible():
+                        await human_type(name_in, email.split("@")[0])
+                        await human_delay(0.5, 1.0)
+                        sub_btn = or_page.locator("[role='dialog'] button:has-text('Create'), .fixed.inset-0 button:has-text('Create')").last
+                        if await sub_btn.is_visible():
+                            await human_click(sub_btn)
+                            await human_delay(3.0, 4.5)
+
+                # Ekstrak dari dialog create key
                 content = await or_page.content()
-                keys = re.findall(r'(sk-or-[A-Za-z0-9_-]{20,})', content)
-                if keys:
-                    api_key = keys[0]
+                m = re.search(r'(sk-or-v1-[A-Za-z0-9_-]{20,})', content)
+                if m:
+                    api_key = m.group(1)
+                    print(f"[+] [OpenRouter] Key dibuat & ditemukan: {api_key[:14]}...{api_key[-4:]}")
 
-            if api_key:
-                print(f"[+] [OpenRouter] Berhasil mendapatkan API Key: {api_key[:12]}...{api_key[-4:]}")
-            else:
-                raise Exception("Gagal mengekstrak API Key OpenRouter")
+            if not api_key:
+                raise RuntimeError("Gagal mengekstrak API Key OpenRouter")
 
+            self.mark_stage("completed")
             return api_key
 
         except Exception as e:
-            self.mark_failed("create_key", str(e), retryable=True)
-            return None
+            print(f"[-] [OpenRouter] Error: {e}")
+            raise
 
     async def run_flow(
         self,
@@ -126,28 +237,26 @@ class OpenRouterFlow(BaseFlow):
         main_page: Optional[Page],
         account: Dict[str, str],
         index: int,
-        total: int
+        total: int,
     ) -> bool:
-        email = account["email"]
-        print(f"\n[{index+1}/{total}] Memproses Akun OpenRouter: {email}")
+        """
+        Menjalankan flow lengkap registrasi & simpan key OpenRouter.
+        """
+        email = account.get("email", "")
         self.set_current_account(email)
 
-        or_page = main_page or await context.new_page()
-
         try:
-            api_key = await self._obtain_openrouter_api_key(context, or_page, account)
+            api_key = await self._obtain_openrouter_api_key(context, account)
             if not api_key:
+                self.mark_failed("extract_key", "Gagal mendapatkan API Key", retryable=True)
                 return False
 
-            if self.output_mode == "txt":
-                self.save_key(email, api_key)
-            elif self.output_mode == "omni" and main_page:
-                self.mark_stage("omni_save")
-                await save_api_key_to_omni(main_page, "openrouter", email, api_key)
-
-            self.mark_success()
+            self.mark_stage("saving_result")
+            self.save_key(email, api_key)
+            self.mark_success(key_hint=f"{api_key[:10]}...{api_key[-4:]}")
+            print(f"[+] [OpenRouter] SUKSES! API Key tersimpan untuk {email}: {api_key[:14]}...{api_key[-4:]}")
             return True
 
         except Exception as e:
-            self.mark_failed("general", str(e), retryable=True)
+            self.mark_failed("error", str(e), retryable=True)
             return False

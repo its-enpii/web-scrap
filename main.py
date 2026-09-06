@@ -200,7 +200,9 @@ async def run_single_flow_task(
         }
         if assigned_proxy:
             camoufox_kwargs["proxy"] = assigned_proxy
-            camoufox_kwargs["geoip"] = True
+            # geoip=False dengan proxy statik: geoip menambah request ke geoip server
+            # dan membuat fingerprint mismatch -> modal Clerk tidak muncul di openrouter.ai
+            camoufox_kwargs["geoip"] = False
         else:
             camoufox_kwargs["geoip"] = False
 
@@ -337,16 +339,27 @@ async def run_automation(
             needs_omni = output_mode == "omni" or f_key == "kiro_omni"
 
             try:
-                ok = await run_single_flow_task(
-                    flow_inst=flow_inst,
-                    acc=acc,
-                    acc_idx=acc_idx,
-                    total_acc=len(accounts),
-                    assigned_proxy=assigned_proxy,
-                    is_headless=is_headless,
-                    engine=engine,
-                    needs_omni=needs_omni
-                )
+                # Proxy failover: jika gagal DAN ada proxy lain, retry dengan proxy berikutnya
+                max_proxy_tries = min(2, len(proxies_list)) if proxies_list else 1
+                proxy_attempt = 0
+                while True:
+                    ok = await run_single_flow_task(
+                        flow_inst=flow_inst,
+                        acc=acc,
+                        acc_idx=acc_idx,
+                        total_acc=len(accounts),
+                        assigned_proxy=assigned_proxy,
+                        is_headless=is_headless,
+                        engine=engine,
+                        needs_omni=needs_omni
+                    )
+                    proxy_attempt += 1
+                    if ok or proxy_attempt >= max_proxy_tries:
+                        break
+                    next_idx = (proxies_list.index(assigned_proxy) + 1) % len(proxies_list) if assigned_proxy else 0
+                    assigned_proxy = proxies_list[next_idx]
+                    proxy_label = assigned_proxy['server']
+                    print(f"[RETRY] Flow gagal — coba proxy lain: {proxy_label}")
                 if ok:
                     if state.get(acc["email"]).get("status") != "success":
                         flow_inst.mark_success()
