@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment & secrets
+.env
+*.env
+!.env.example
+
+# Accounts & proxies (sensitive data)
+accounts.txt
+proxies.txt
+
+# Results (output berisi email & API key)
+results/
+
+# Playwright / Camoufox artifacts
+user_data/
+.auth/
+*.png
+*.jpg
+*.jpeg
+
+*.log
