@@ -55,14 +55,18 @@ class KiroOmniFlow(BaseFlow):
 
             # Klik Approve di Kiro Dev
             print("[*] Menunggu tombol 'Approve' di Kiro Dev...")
-            approve_btn = page.locator("button:has-text('Approve')").first
+            approve_btn = page.locator(
+                "button:has-text('Approve'), button:has-text('Allow'), button:has-text('Confirm'), button:has-text('Authorize'), button:has-text('Setuju')"
+            ).first
             await approve_btn.wait_for(state="visible", timeout=30000)
             await human_click(approve_btn, pre_delay=0.8, post_delay=1.5)
-            print("[+] Tombol 'Approve' diklik.")
+            print("[+] Tombol Approve diklik.")
 
-            # Klik Done
+            # Klik Done / Finish
             print("[*] Menunggu tombol 'Done'...")
-            done_btn = page.locator("button:has-text('Done')").first
+            done_btn = page.locator(
+                "button:has-text('Done'), button:has-text('Finish'), button:has-text('Selesai'), button:has-text('Close')"
+            ).first
             await done_btn.wait_for(state="visible", timeout=15000)
             await human_click(done_btn, pre_delay=0.8, post_delay=1.2)
             print(f"[+] Berhasil menghubungkan akun {account['email']}!")

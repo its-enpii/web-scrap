@@ -84,7 +84,7 @@ class OpenRouterFlow(BaseFlow):
 
             # 3. Klik tombol Google
             google_btn = router_page.locator(
-                "button.cl-socialButtonsIconButton__google, button.cl-button__google, button:has(span.cl-socialButtonsProviderIcon__google), button:has(span[aria-label*='Google']), button:has-text('Google')"
+                "button:has-text('Google'), .cl-socialButtons button, button.cl-socialButtonsIconButton__google, button.cl-button__google, button:has(span.cl-socialButtonsProviderIcon__google)"
             ).first
             await google_btn.wait_for(state="visible", timeout=15000)
             print("[*] [OpenRouter] Mengklik login Google...")
