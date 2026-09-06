@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 from playwright.async_api import BrowserContext, Page
 
+from datetime import datetime, timezone
+
 from .account_state import derive_username
 from .base import BaseFlow
 from .human_helper import human_click, human_delay, human_type
@@ -33,7 +35,7 @@ class UnoRouterFlow(BaseFlow):
         except Exception:
             return True
 
-        for _ in range(15):
+        for _ in range(30):
             try:
                 if await token_input.input_value():
                     print("[+] [UnoRouter] Turnstile berhasil ter-solve.")
@@ -42,7 +44,7 @@ class UnoRouterFlow(BaseFlow):
                 return False
             await asyncio.sleep(2)
 
-        print("[-] [UnoRouter] Token Turnstile tidak terisi dalam 30 detik.")
+        print("[-] [UnoRouter] Token Turnstile tidak terisi dalam 60 detik.")
         return False
 
     async def _register(self, page: Page, username: str, password: str) -> bool:
@@ -178,10 +180,13 @@ class UnoRouterFlow(BaseFlow):
             return False
 
         stage = record.get("stage", "register")
+        if stage not in ("register", "login", "key_create", "done"):
+            print(f"[i] Akun {email}: stage '{stage}' tidak valid, ulang dari register.")
+            stage = "register"
         if record.get("status") == "failed":
             print(f"[i] Akun {email}: gagal sebelumnya di {stage} ({record.get('error')}), melanjutkan dari stage tsb.")
 
-        state.update(email, attempts=record.get("attempts", 0) + 1, status="new", error=None)
+        state.update(email, status="new", error=None)
 
         current_stage = stage
         try:

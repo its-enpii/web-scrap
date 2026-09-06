@@ -18,7 +18,7 @@ env/
 !.env.example
 
 # Accounts & proxies (sensitive data)
-accounts.txt
+accounts*.txt
 proxies.txt
 
 # Results (output berisi email & API key)

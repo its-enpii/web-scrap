@@ -201,27 +201,24 @@ async def run_single_flow_task(
 
         print(f"[*] Meluncurkan Camoufox (1 Single Window)...")
         async with AsyncCamoufox(**camoufox_kwargs) as browser:
-            # Dapatkan / buat context tunggal
-            context = browser.contexts[0] if browser.contexts else await browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
-            )
-            # Gunakan page pertama yang sudah ada (jangan new_page lagi jika sudah ada)
-            page = context.pages[0] if context.pages else await context.new_page()
+            # Gunakan default page Camoufox (fingerprint konsisten, TANPA override UA/viewport
+            # — override merusak konsistensi fingerprint dan membuat Turnstile gagal solve)
+            page = await browser.new_page()
 
             if needs_omni:
-                await flow_inst.setup(context, page)
+                await flow_inst.setup(page.context, page)
 
-            ok = await flow_inst.run_flow(context, page, acc, acc_idx, total_acc)
-            await close_context_completely(context)
+            ok = await flow_inst.run_flow(page.context, page, acc, acc_idx, total_acc)
+            await close_context_completely(page.context)
             return ok
     else:
         # Fallback Chromium
         async with async_playwright() as p:
             browser = await launch_smart_chromium(p, is_headless)
             context_kwargs = {
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-                "viewport": {"width": 1280, "height": 800}
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                "viewport": {"width": 1280, "height": 800},
+                "locale": "en-US"
             }
             if assigned_proxy:
                 context_kwargs["proxy"] = assigned_proxy
@@ -290,9 +287,6 @@ async def run_automation(
     flow_instances = {}
     for f_key in flow_keys:
         flow_cls = AVAILABLE_FLOWS[f_key]
-        if f_key == "unorouter" and engine != "camoufox":
-            print("[-] [UnoRouter] Flow ini memerlukan engine Camoufox untuk solve Turnstile otomatis.")
-            return
         default_file = os.path.join(DEFAULT_OUTPUT_DIR, f"keys_{f_key}.txt")
         target_output_file = custom_output_file or default_file
 
@@ -362,7 +356,9 @@ async def run_automation(
                     stats[f_key]["failed"] += 1
                     print(f"[FAILED] {acc['email']} gagal di {flow_inst.name}")
             except Exception as e:
-                flow_inst.mark_failed("run_flow", f"unhandled exception: {e}", retryable=True)
+                _rec = flow_inst.state.get(acc["email"]) if flow_inst.state else {}
+                _stage = _rec.get("stage") if _rec.get("stage") in ("register", "login", "key_create", "done") else "register"
+                flow_inst.mark_failed(_stage, f"unhandled exception: {e}", retryable=True)
                 print(f"[ERROR] Exception pada {acc['email']} di {flow_inst.name}: {e}")
                 stats[f_key]["failed"] += 1
 
