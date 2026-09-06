@@ -51,7 +51,19 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
         except Exception as pe:
             print(f"[?] [Google Auth] Input password tidak muncul / dilewati: {pe}")
 
-        # 3. Input Recovery Email jika diminta Google
+        # 3. Handle Workspace Terms of Service (Speedbump / Welcome to your new account)
+        try:
+            tos_btn = auth_page.locator(
+                "button:has-text('I understand'), button:has-text('Saya mengerti'), button:has-text('Saya paham'), button:has-text('Accept'), button:has-text('Agree')"
+            ).first
+            if await tos_btn.is_visible(timeout=5000):
+                print("[*] [Google Auth] Mendeteksi Workspace Terms of Service (I understand), mengklik...")
+                await human_click(tos_btn)
+                await human_delay(2.0, 3.5)
+        except Exception:
+            pass
+
+        # 4. Input Recovery Email jika diminta Google
         rec_locator = auth_page.locator(
             "text=Confirm your recovery email, text=Konfirmasikan email pemulihan Anda, div[data-challengetype='12']"
         ).first
