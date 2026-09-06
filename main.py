@@ -188,6 +188,11 @@ async def run_single_flow_task(
     needs_omni: bool
 ) -> bool:
     """Menjalankan 1 task flow dengan tepat 1 single browser page/tab."""
+    # Khusus BAI (chat.b.ai), Next.js memerlukan rendering Chromium standar
+    flow_name_lower = getattr(flow_inst, "name", "").lower()
+    if "bai" in flow_name_lower or getattr(flow_inst, "key", "") == "bai":
+        engine = "chromium"
+
     if engine == "camoufox" and CAMOUFOX_AVAILABLE:
         camoufox_kwargs = {
             "headless": is_headless,
@@ -217,8 +222,9 @@ async def run_single_flow_task(
             browser = await launch_smart_chromium(p, is_headless)
             context_kwargs = {
                 "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-                "viewport": {"width": 1280, "height": 800},
-                "locale": "en-US"
+                "viewport": {"width": 1920, "height": 1080},
+                "locale": "en-US",
+                "permissions": ["clipboard-read", "clipboard-write"]
             }
             if assigned_proxy:
                 context_kwargs["proxy"] = assigned_proxy
