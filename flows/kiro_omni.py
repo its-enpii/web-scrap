@@ -38,7 +38,16 @@ class KiroOmniFlow(BaseFlow):
 
         print("[*] Menunggu link otorisasi device muncul...")
         device_link_loc = page.locator("a[href*='app.kiro.dev/account/device']").first
-        await device_link_loc.wait_for(state="visible", timeout=15000)
+        try:
+            await device_link_loc.wait_for(state="visible", timeout=20000)
+        except Exception:
+            # Fallback: cari href via querySelectorAll (kadang elemen off-viewport/partial render)
+            link = await page.evaluate(
+                "() => { const a = document.querySelector(\"a[href*='app.kiro.dev/account/device']\"); return a ? a.href : null; }"
+            )
+            if not link:
+                raise RuntimeError("device authorization link tidak ditemukan")
+            return link
         link = await device_link_loc.get_attribute("href")
         print(f"[+] Device Auth Link: {link}")
         return link

@@ -65,8 +65,31 @@ class BAIFlow(BaseFlow):
                         if not popup_page.is_closed():
                             await popup_page.close()
                 except Exception as auth_error:
-                    self.mark_failed("login", f"Google login gagal: {auth_error}", retryable=True)
-                    return None
+                    # Fallback: popup tidak terdeteksi — OAuth bisa terjadi di tab yang sama
+                    print(f"[?] [BAI] Popup tidak terbuka ({auth_error}); cek tab yang sama...")
+                    g_page = None
+                    for _ in range(20):
+                        await human_delay(0.5, 0.8)
+                        if "accounts.google.com" in bai_page.url:
+                            g_page = bai_page
+                            break
+                        for pg in context.pages:
+                            if pg is not bai_page and "accounts.google.com" in pg.url:
+                                g_page = pg
+                                break
+                        if g_page:
+                            break
+                    if g_page:
+                        await fill_google_login(g_page, account)
+                        if g_page is not bai_page:
+                            try:
+                                await g_page.wait_for_event("close", timeout=25000)
+                            except Exception:
+                                if not g_page.is_closed():
+                                    await g_page.close()
+                    else:
+                        self.mark_failed("login", f"Google login gagal: {auth_error}", retryable=True)
+                        return None
 
                 await human_delay(3.0, 4.0)
 
