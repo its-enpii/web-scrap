@@ -371,7 +371,18 @@ async def run_automation(
                     proxy_attempt += 1
                     if ok or proxy_attempt >= max_proxy_tries:
                         break
-                    next_idx = (proxies_list.index(assigned_proxy) + 1) % len(proxies_list) if assigned_proxy else 0
+                    # Lompat ke proxy dengan HOST fisik berbeda: entries di
+                    # proxies.txt berkelompok 4 kredensial per IP, jadi +1
+                    # saja kerap mendarat di IP yang sama (rate-limit sama).
+                    cur_idx = proxies_list.index(assigned_proxy) if assigned_proxy else -1
+                    cur_host = (assigned_proxy or {}).get("server", "").split("//")[-1].split(":")[0]
+                    next_idx = (cur_idx + 1) % len(proxies_list)
+                    for _step in range(1, len(proxies_list) + 1):
+                        cand = (cur_idx + _step) % len(proxies_list)
+                        cand_host = proxies_list[cand]["server"].split("//")[-1].split(":")[0]
+                        if cand_host != cur_host:
+                            next_idx = cand
+                            break
                     assigned_proxy = proxies_list[next_idx]
                     proxy_label = assigned_proxy['server']
                     print(f"[RETRY] Flow gagal — coba proxy lain: {proxy_label}")
