@@ -78,7 +78,15 @@ class UnoRouterFlow(BaseFlow):
             print("[+] [UnoRouter] Registrasi berhasil.")
             return True
 
+        # Pesan IP-limit dari unorouter.com (1 akun per IP): "An account has
+        # already been registered from this IP address". Ini BUKAN berarti
+        # username ini yang sudah terdaftar — akun sama sekali tidak dibuat.
+        # Harus gagal-loud (bukan lanjut login) agar failover proxy mengambil
+        # alih dengan IP berbeda.
         page_text = await page.locator("body").inner_text()
+        if "registered from this ip" in page_text.lower():
+            raise RuntimeError("register_blocked_ip_limit")
+
         if any(word in page_text.lower() for word in ["already", "taken", "exist"]):
             print("[i] [UnoRouter] Username sudah terdaftar, melanjutkan ke login.")
             return True

@@ -193,12 +193,17 @@ async def run_single_flow_task(
     if "bai" in flow_name_lower or getattr(flow_inst, "key", "") == "bai":
         engine = "chromium"
 
-    # Flow Google-OAuth / Kiro device-link / Turnstile: gagal 100% via proxy batch
-    # (popup OAuth tidak terbuka, link app.kiro.dev/account/device tidak muncul,
-    # Turnstile timeout), sedangkan probe koneksi langsung (tanpa proxy) sukses.
-    # Flow lain (openrouter, qwencloud, tokenrouter, opencode_zen) terbukti jalan
-    # via proxy — jadi hanya 3 flow ini yang di-bypass ke koneksi langsung.
-    _direct_only_markers = ("kiro", "bai", "unorouter")
+    # Flow Google-OAuth / Kiro device-link: gagal 100% via proxy batch
+    # (popup OAuth tidak terbuka, link app.kiro.dev/account/device tidak muncul),
+    # sedangkan probe koneksi langsung (tanpa proxy) sukses.
+    # Flow lain (openrouter, qwencloud, tokenrouter, opencode_zen, unorouter,
+    # bai) terbukti jalan via proxy — jadi hanya flow ini yang di-bypass ke
+    # koneksi langsung.
+    # CATATAN unorouter: TIDAK di-bypass. unorouter.com membatasi 1 akun per
+    # IP; register dari IP server langsung (tanpa proxy) ditolak dengan pesan
+    # "An account has already been registered from this IP address", dan
+    # Turnstile + register terbukti sukses via proxy rotasi (batch pertama).
+    _direct_only_markers = ("kiro", "bai")
     if assigned_proxy and any(m in flow_name_lower for m in _direct_only_markers):
         print(f"[*] [{flow_inst.name}] Bypass proxy — pakai koneksi langsung (OAuth/Turnstile gagal via proxy).")
         assigned_proxy = None
