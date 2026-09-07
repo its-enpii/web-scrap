@@ -99,10 +99,21 @@ class BAIFlow(BaseFlow):
             await bai_page.goto("https://chat.b.ai/key", wait_until="domcontentloaded")
             await human_delay(3.0, 4.0)
 
-            # 5. Klik tombol "Create API key"
+            # 5. Klik tombol "Create API key" (halaman kadang lambat render — reload sekali bila perlu)
             self.mark_stage("create_api_key")
             create_key_btn = bai_page.locator("button:has-text('Create API key'), button:has-text('Create API Key')").first
-            await create_key_btn.wait_for(state="visible", timeout=15000)
+            try:
+                await create_key_btn.wait_for(state="visible", timeout=30000)
+            except Exception:
+                print("[?] [BAI] Tombol Create API key tak muncul — reload halaman...")
+                try:
+                    await bai_page.reload(wait_until="domcontentloaded")
+                    await human_delay(3.0, 4.0)
+                    await create_key_btn.wait_for(state="visible", timeout=20000)
+                except Exception:
+                    # Fallback terakhir: tombol generik bertuliskan Create
+                    create_key_btn = bai_page.locator("button:has-text('Create')").first
+                    await create_key_btn.wait_for(state="visible", timeout=15000)
             print("[*] [BAI] Mengklik 'Create API key'...")
             await human_click(create_key_btn, pre_delay=0.4, post_delay=1.0)
             await human_delay(1.5, 2.5)

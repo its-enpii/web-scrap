@@ -134,13 +134,32 @@ class KiroOmniFlow(BaseFlow):
 
         # Otorisasi device di TAB BARU — tab AI-Omni (modal device link) harus tetap hidup
         # supaya polling koneksi jalan. Navigasi main_page ke kiro.dev mematikan koneksi.
-        device_page = await context.new_page()
-        success = await self._handle_google_login(device_page, device_url, account)
+        # Camoufox menolak context.new_page() -> buka tab via window.open() dari halaman.
+        device_page = None
         try:
-            if not device_page.is_closed():
-                await device_page.close()
-        except Exception:
-            pass
+            async with context.expect_page(timeout=10000) as popup_info:
+                await main_page.evaluate("url => window.open(url, '_blank')", device_url)
+            device_page = await popup_info.value
+        except Exception as popup_err:
+            print(f"[?] Popup device auth gagal dibuka ({popup_err}); fallback tab yang sama...")
+
+        if device_page is not None:
+            success = await self._handle_google_login(device_page, device_url, account)
+            try:
+                if not device_page.is_closed():
+                    await device_page.close()
+            except Exception:
+                pass
+        else:
+            # Fallback: gunakan tab yang sama, lalu kembali ke dashboard AI-Omni
+            success = await self._handle_google_login(main_page, device_url, account)
+            try:
+                await main_page.goto(
+                    "https://ai-omni.enpiistudio.com/dashboard/providers/kiro",
+                    wait_until="domcontentloaded",
+                )
+            except Exception:
+                pass
 
         registered = False
         if success:
