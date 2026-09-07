@@ -32,7 +32,7 @@ class BAIFlow(BaseFlow):
             self.mark_stage("navigate")
             print("[*] [BAI] Membuka https://chat.b.ai...")
             await bai_page.goto("https://chat.b.ai", wait_until="domcontentloaded")
-            await human_delay(3.0, 4.0)
+            await human_delay(0.5, 1.0)
 
             # 2. Cek apakah ada tombol "Log in"
             login_btn = bai_page.locator("button:has-text('Log in')").first
@@ -46,7 +46,7 @@ class BAIFlow(BaseFlow):
                 self.mark_stage("login")
                 print("[*] [BAI] Mengklik tombol 'Log in'...")
                 await human_click(login_btn, pre_delay=0.4, post_delay=0.8)
-                await human_delay(2.0, 3.0)
+                await human_delay(0.4, 0.8)
 
                 # 3. Klik "Continue with Google" (membuka popup OAuth)
                 google_btn = bai_page.locator("button:has-text('Continue with Google')").first
@@ -91,32 +91,32 @@ class BAIFlow(BaseFlow):
                         self.mark_failed("login", f"Google login gagal: {auth_error}", retryable=True)
                         return None
 
-                await human_delay(3.0, 4.0)
+                await human_delay(0.5, 1.0)
 
             # 4. Buka halaman https://chat.b.ai/key
             self.mark_stage("open_key_page")
             print("[*] [BAI] Menuju halaman API Key (https://chat.b.ai/key)...")
             await bai_page.goto("https://chat.b.ai/key", wait_until="domcontentloaded")
-            await human_delay(3.0, 4.0)
+            await human_delay(0.5, 1.0)
 
             # 5. Klik tombol "Create API key" (halaman kadang lambat render — reload sekali bila perlu)
             self.mark_stage("create_api_key")
             create_key_btn = bai_page.locator("button:has-text('Create API key'), button:has-text('Create API Key')").first
             try:
-                await create_key_btn.wait_for(state="visible", timeout=30000)
+                await create_key_btn.wait_for(state="visible", timeout=8000)
             except Exception:
                 print("[?] [BAI] Tombol Create API key tak muncul — reload halaman...")
                 try:
                     await bai_page.reload(wait_until="domcontentloaded")
-                    await human_delay(3.0, 4.0)
-                    await create_key_btn.wait_for(state="visible", timeout=20000)
+                    await human_delay(0.5, 1.0)
+                    await create_key_btn.wait_for(state="visible", timeout=8000)
                 except Exception:
                     # Fallback terakhir: tombol generik bertuliskan Create
                     create_key_btn = bai_page.locator("button:has-text('Create')").first
-                    await create_key_btn.wait_for(state="visible", timeout=15000)
+                    await create_key_btn.wait_for(state="visible", timeout=6000)
             print("[*] [BAI] Mengklik 'Create API key'...")
             await human_click(create_key_btn, pre_delay=0.4, post_delay=1.0)
-            await human_delay(1.5, 2.5)
+            await human_delay(0.4, 0.8)
 
             # 6. Isi nama key di modal dan klik Confirm
             modal_in = bai_page.locator(".ant-modal input, [role='dialog'] input").first
@@ -128,7 +128,7 @@ class BAIFlow(BaseFlow):
                 confirm_btn = bai_page.locator(".ant-modal button:has-text('Confirm'), .ant-modal button.ant-btn-primary, [role='dialog'] button:has-text('Confirm')").last
                 await human_click(confirm_btn)
                 print("[*] [BAI] Modal create key disubmit.")
-                await human_delay(3.0, 4.0)
+                await human_delay(0.5, 1.0)
 
             # 7. Salin API Key dari dialog hasil atau clipboard
             self.mark_stage("extract_key")
