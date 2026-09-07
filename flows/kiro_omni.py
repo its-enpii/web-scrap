@@ -95,6 +95,32 @@ class KiroOmniFlow(BaseFlow):
                 pass
             return False
 
+    async def _wait_connection_registered(self, page: Page, timeout_s: int = 40) -> bool:
+        """Tunggu AI-Omni mendaftarkan koneksi (empty state 'No connections yet'/'0 connections' hilang)."""
+        deadline = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                low = (await page.content()).lower()
+                if "no connections yet" not in low and "0 connection" not in low:
+                    print("[+] [AI-Omni] Koneksi Kiro terdaftar di dashboard!")
+                    return True
+            except Exception:
+                pass
+            # Klik tombol cek/selesai di modal AI-Omni bila ada
+            for sel in (
+                "button:has-text('Check status')", "button:has-text('Cek status')",
+                "button:has-text('Selesai')", "button:has-text('Done')",
+            ):
+                try:
+                    btn = page.locator(sel).first
+                    if await btn.is_visible():
+                        await human_click(btn)
+                        break
+                except Exception:
+                    pass
+            await asyncio.sleep(3)
+        return False
+
     async def run_flow(self, context: BrowserContext, main_page: Optional[Page], account: Dict[str, str], index: int, total: int) -> bool:
         if not main_page:
             main_page = await context.new_page()
@@ -106,12 +132,39 @@ class KiroOmniFlow(BaseFlow):
             self.mark_failed("navigate", "device authorization link tidak ditemukan", retryable=True)
             return False
 
-        # Langsung gunakan main_page yang sama (1 Single Window)
-        success = await self._handle_google_login(main_page, device_url, account)
+        # Otorisasi device di TAB BARU — tab AI-Omni (modal device link) harus tetap hidup
+        # supaya polling koneksi jalan. Navigasi main_page ke kiro.dev mematikan koneksi.
+        device_page = await context.new_page()
+        success = await self._handle_google_login(device_page, device_url, account)
+        try:
+            if not device_page.is_closed():
+                await device_page.close()
+        except Exception:
+            pass
+
+        registered = False
         if success:
+            registered = await self._wait_connection_registered(main_page, timeout_s=40)
+            if not registered:
+                # Fallback: reload halaman Kiro lalu cek sekali lagi
+                try:
+                    await main_page.reload(wait_until="domcontentloaded")
+                    await human_delay(1.0, 2.0)
+                    registered = await self._wait_connection_registered(main_page, timeout_s=15)
+                except Exception:
+                    pass
+
+        if success and registered:
             if self.output_mode == "txt":
                 self.save_key(account["email"], "connected_via_device_oauth")
             self.mark_success("connected_via_device_oauth")
+        else:
+            self.mark_failed(
+                "register",
+                "otorisasi kiro selesai tapi koneksi belum terdaftar di ai-omni",
+                retryable=True,
+            )
+            success = False
 
         await human_delay(1.5, 2.5)
         return success
