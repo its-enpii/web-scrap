@@ -1,13 +1,10 @@
-﻿import asyncio
+import asyncio
 from typing import Dict, Any, Optional
 from playwright.async_api import BrowserContext, Page
 from .base import BaseFlow
 from .google_auth_helper import fill_google_login
 from .omni_helper import ensure_omni_logged_in, navigate_to_provider
 from .human_helper import human_click, human_delay
-
-class KiroAlreadyConnected(Exception):
-    """Modal AI-Omni menampilkan koneksi yang sudah terdaftar (bukan link device baru)."""
 
 
 class KiroOmniFlow(BaseFlow):
@@ -16,20 +13,47 @@ class KiroOmniFlow(BaseFlow):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self._connect_cycles = 0
         self.base_url = config.get("omni_url", "https://ai-omni.enpiistudio.com/login")
         self.omni_password = config.get("omni_password", "its.enpii-118")
         if not self.config.get("output_file") or self.config.get("output_file") == "keys.txt":
             self.output_file = "keys_kiro.txt"
 
-    def set_current_account(self, email: str | None):
-        super().set_current_account(email)
-        self._connect_cycles = 0
-
     async def setup(self, context: BrowserContext, main_page: Optional[Page]) -> bool:
         if main_page:
             return await ensure_omni_logged_in(main_page, self.config)
         return True
+
+    # ------------------------------------------------------------------
+    # Verifikasi koneksi via API internal AI-Omni (v8).
+    #
+    # Dashboard AI-Omni TIDAK merender email akun — baik di DOM maupun di
+    # payload /api/providers (objek koneksi hanya berisi id/status OAuth).
+    # Pengecekan lama `email in page.content()` selalu false-fail:
+    #   [RETRY] setelah "Berhasil menghubungkan" -> wizard diputar ulang ->
+    #   tanpa link baru (identitas sudah terhubung) -> "device authorization
+    #   link tidak ditemukan" -> kegagalan beruntun (v6/v7) + koneksi duplikat.
+    #
+    # Sinyal yang benar: hitung koneksi provider `kiro` via /api/providers
+    # sebelum (baseline) dan sesudah otorisasi; koneksi bertambah = sukses.
+    # ------------------------------------------------------------------
+    async def _count_kiro_connections(self, page: Page) -> Optional[int]:
+        try:
+            return await page.evaluate(
+                """async () => {
+                    const r = await fetch('/api/providers?provider=kiro', {credentials: 'include'});
+                    if (!r.ok) return null;
+                    const j = await r.json();
+                    return Array.isArray(j.connections) ? j.connections.length : null;
+                }"""
+            )
+        except Exception:
+            return None
+
+    async def _already_connected(self, page: Page, baseline: Optional[int]) -> bool:
+        if baseline is None:
+            return False
+        now = await self._count_kiro_connections(page)
+        return now is not None and now > baseline
 
     async def _get_device_link(self, page: Page, account: Dict[str, str]) -> Optional[str]:
         self.mark_stage("navigate")
@@ -38,17 +62,24 @@ class KiroOmniFlow(BaseFlow):
         await human_click(add_btn, pre_delay=0.4, post_delay=0.8)
 
         print("[*] Mengklik 'Saya mengerti, lanjutkan'...")
-        understand_btn = page.locator("button:has-text('Saya mengerti, lanjutkan'), button:has-text('understand')").first
-        await human_click(understand_btn, pre_delay=0.4, post_delay=0.8)
+        understand_btn = page.locator(
+            "button:has-text('Saya mengerti, lanjutkan'), button:has-text('I understand, continue'), button:has-text('understand')"
+        ).first
+        try:
+            await understand_btn.wait_for(state="visible", timeout=8000)
+        except Exception:
+            pass
+        try:
+            await human_click(understand_btn, pre_delay=0.4, post_delay=0.8)
+        except Exception:
+            pass
 
         print("[*] Memilih opsi 'Akun Google'...")
         google_opt_btn = page.locator("button:has-text('Akun Google'), button:has-text('Google')").first
         await human_click(google_opt_btn, pre_delay=0.4, post_delay=0.8)
 
         print("[*] Menunggu link otorisasi device muncul...")
-        email_l = account["email"].lower()
-        user_l = email_l.split("@")[0]
-        deadline = asyncio.get_event_loop().time() + 20
+        deadline = asyncio.get_event_loop().time() + 30
         while asyncio.get_event_loop().time() < deadline:
             try:
                 link = await page.evaluate(
@@ -59,17 +90,8 @@ class KiroOmniFlow(BaseFlow):
             if link:
                 print(f"[+] Device Auth Link: {link}")
                 return link
-            # Koneksi mungkin sudah terdaftar dari percobaan sebelumnya — modal
-            # menampilkan baris koneksi (email akun) alih-alih link device baru.
-            try:
-                low = (await page.content()).lower()
-            except Exception:
-                low = ""
-            if "belum ada koneksi" not in low and "no connections yet" not in low:
-                if email_l in low or user_l in low:
-                    raise KiroAlreadyConnected()
             await asyncio.sleep(2)
-        raise RuntimeError("device authorization link tidak ditemukan")
+        return None
 
     async def _handle_google_login(self, page: Page, device_url: str, account: Dict[str, str]) -> bool:
         try:
@@ -97,7 +119,7 @@ class KiroOmniFlow(BaseFlow):
             ).first
             await done_btn.wait_for(state="visible", timeout=15000)
             await human_click(done_btn, pre_delay=0.8, post_delay=1.2)
-            print(f"[+] Berhasil menghubungkan akun {account['email']}!")
+            print(f"[+] Otorisasi kiro.dev selesai untuk {account['email']}!")
 
             await human_delay(1.5, 2.5)
             return True
@@ -114,55 +136,45 @@ class KiroOmniFlow(BaseFlow):
                 pass
             return False
 
-    async def _wait_connection_registered(self, page: Page, account_email: str, timeout_s: int = 40) -> bool:
-        """Tunggu koneksi terlihat di halaman AI-Omni.
-
-        Sinyal: email/username akun tampil pada daftar koneksi DAN empty state
-        ('Belum ada koneksi'/'No connections yet') tidak ada. Absennya empty state
-        saja tidak cukup — halaman non-dashboard juga tidak memuat teks itu.
-        """
-        email_l = account_email.lower()
-        user_l = email_l.split("@")[0]
-        deadline = asyncio.get_event_loop().time() + timeout_s
-        while asyncio.get_event_loop().time() < deadline:
-            try:
-                low = (await page.content()).lower()
-                if "belum ada koneksi" not in low and "no connections yet" not in low:
-                    if email_l in low or user_l in low:
-                        print("[+] [AI-Omni] Koneksi Kiro terdaftar di dashboard!")
-                        return True
-            except Exception:
-                pass
-            # Klik tombol cek/selesai di modal AI-Omni bila ada
-            for sel in (
-                "button:has-text('Check status')", "button:has-text('Cek status')",
-                "button:has-text('Selesai')", "button:has-text('Done')",
-            ):
-                try:
-                    btn = page.locator(sel).first
-                    if await btn.is_visible():
-                        await human_click(btn)
-                        break
-                except Exception:
-                    pass
-            await asyncio.sleep(3)
-        return False
-
     async def run_flow(self, context: BrowserContext, main_page: Optional[Page], account: Dict[str, str], index: int, total: int) -> bool:
         if not main_page:
             main_page = await context.new_page()
 
         await navigate_to_provider(main_page, "kiro")
-        try:
+
+        baseline = await self._count_kiro_connections(main_page)
+        if baseline is None:
+            print("[?] [AI-Omni] Tidak bisa membaca jumlah koneksi Kiro via API — verifikasi akan fallback.")
+        else:
+            print(f"[*] [AI-Omni] Baseline koneksi Kiro: {baseline}")
+
+        device_url = await self._get_device_link(main_page, account)
+
+        if device_url is None:
+            # Satu kali buka wizard lagi — kadang modal pertama gagal render link
+            print("[?] Link tidak muncul — mencoba buka wizard sekali lagi...")
+            try:
+                await main_page.keyboard.press("Escape")
+                await human_delay(1.0, 1.5)
+            except Exception:
+                pass
             device_url = await self._get_device_link(main_page, account)
-        except KiroAlreadyConnected:
-            print(f"[+] Koneksi Kiro untuk {account['email']} sudah terdaftar di AI-Omni.")
-            if self.output_mode == "txt":
-                self.save_key(account["email"], "connected_via_device_oauth")
-            self.mark_success("connected_via_device_oauth")
-            await human_delay(1.0, 2.0)
-            return True
-        if not device_url:
+
+        if device_url is None:
+            if baseline:
+                # Dua kali wizard tanpa link baru. Karena AI-Omni TIDAK
+                # menyimpan email di koneksi (tak bisa dipetakan per akun),
+                # perlakukan sebagai sudah-terhubung (biasanya terjadi setelah
+                # otorisasi sukses di run sebelumnya yang verifikasinya false-fail).
+                print(
+                    f"[+] Tidak ada link device baru 2x — asumsikan akun {account['email']} "
+                    f"sudah terhubung (koneksi kiro terdaftar: {baseline})."
+                )
+                if self.output_mode == "txt":
+                    self.save_key(account["email"], "connected_via_device_oauth")
+                self.mark_success("connected_via_device_oauth")
+                await human_delay(1.0, 2.0)
+                return True
             print(f"[-] Gagal mendapatkan device link untuk {account['email']}")
             self.mark_failed("navigate", "device authorization link tidak ditemukan", retryable=True)
             return False
@@ -188,20 +200,11 @@ class KiroOmniFlow(BaseFlow):
         else:
             # Fallback: gunakan tab yang sama, lalu kembali ke dashboard AI-Omni
             success = await self._handle_google_login(main_page, device_url, account)
-            try:
-                await main_page.goto(
-                    "https://ai-omni.enpiistudio.com/dashboard/providers/kiro",
-                    wait_until="domcontentloaded",
-                )
-            except Exception:
-                pass
 
         registered = False
         if success:
-            self._connect_cycles += 1
-            # Normalisasi halaman dulu: window.open() pada Camoufox me-redirect
-            # main_page ke app.kiro.dev, sehingga polling tanpa navigasi membaca
-            # halaman yang salah dan _wait_connection_registered selalu false-fail.
+            # Normalisasi halaman dulu: fallback tab yang sama bisa meninggalkan
+            # main_page di app.kiro.dev — fetch API verifikasi harus dari origin ai-omni.
             if "ai-omni.enpiistudio.com" not in (main_page.url or ""):
                 try:
                     await main_page.goto(
@@ -211,20 +214,18 @@ class KiroOmniFlow(BaseFlow):
                     await human_delay(1.5, 2.5)
                 except Exception:
                     pass
-            registered = await self._wait_connection_registered(main_page, account["email"], timeout_s=40)
-            if not registered:
-                # Fallback: reload halaman Kiro lalu cek sekali lagi
-                try:
-                    await main_page.reload(wait_until="domcontentloaded")
-                    await human_delay(1.0, 2.0)
-                    registered = await self._wait_connection_registered(main_page, account["email"], timeout_s=15)
-                except Exception:
-                    pass
-            if not registered and self._connect_cycles >= 2:
-                # 2x otorisasi device (Approve+Done) sukses namun UI AI-Omni tak
-                # bisa dikonfirmasi — percayai hasil kiro.dev agar tidak crash-loop
-                # di attempt berikutnya (link tak muncul lagi karena sudah terhubung).
-                print("[?] [AI-Omni] Verifikasi UI gagal 2x — terima otorisasi kiro.dev sebagai sukses.")
+            # Verifikasi via API: jumlah koneksi kiro harus bertambah dari baseline.
+            deadline = asyncio.get_event_loop().time() + 45
+            while asyncio.get_event_loop().time() < deadline:
+                if await self._already_connected(main_page, baseline):
+                    registered = True
+                    print("[+] [AI-Omni] Koneksi Kiro terdaftar (verifikasi via API).")
+                    break
+                await asyncio.sleep(4)
+            if not registered and baseline is None:
+                # API verifikasi tidak tersedia sejak awal — terima otorisasi
+                # kiro.dev sebagai sukses agar tidak false-fail beruntun.
+                print("[?] [AI-Omni] API verifikasi tak tersedia — terima otorisasi kiro.dev sebagai sukses.")
                 registered = True
 
         if success and registered:

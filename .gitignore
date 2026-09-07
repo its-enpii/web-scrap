@@ -20,6 +20,8 @@ env/
 # Accounts & proxies (sensitive data)
 accounts*.txt
 proxies.txt
+proxies.txt.bak
+proxies*.txt
 
 # Results (output berisi email & API key)
 results/
