@@ -72,6 +72,16 @@ async def bulk_add_provider(page, slug: str, entries):
     await add_btn.click()
     await page.wait_for_timeout(2000)
 
+    # Qwen Cloud: modal minta pilih region dulu (Beijing / Global)
+    try:
+        global_btn = page.locator("button:has-text('Global')").first
+        if await global_btn.is_visible(timeout=2000):
+            await global_btn.click()
+            await page.wait_for_timeout(2500)
+            print("[*] Region Global dipilih.")
+    except Exception:
+        pass
+
     # Pindah ke tab Bulk Add
     bulk_tab = page.locator("button:has-text('Bulk Add'), [role='tab']:has-text('Bulk Add')").first
     await bulk_tab.click()
