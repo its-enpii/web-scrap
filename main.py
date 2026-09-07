@@ -350,7 +350,7 @@ async def run_automation(
 
             try:
                 # Proxy failover: jika gagal DAN ada proxy lain, retry dengan proxy berikutnya
-                max_proxy_tries = min(2, len(proxies_list)) if proxies_list else 1
+                max_proxy_tries = min(4, len(proxies_list)) if proxies_list else 1
                 proxy_attempt = 0
                 while True:
                     ok = await run_single_flow_task(
