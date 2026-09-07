@@ -269,5 +269,13 @@ class UnoRouterFlow(BaseFlow):
         except Exception as error:
             error_message = str(error)
             print(f"[-] [UnoRouter] Gagal pada stage '{stage}' untuk akun {email}: {error_message}")
+            # Fail-loud: jika navigasi gagal karena proxy mati (bandwidth habis dsb),
+            # tandai NON-retryable supaya orchestrator tidak buang waktu retry 200x.
+            from ..proxy_preflight import classify_goto_error
+            dead_reason = classify_goto_error(error_message)
+            if dead_reason:
+                print(f"[!!] [UnoRouter] Proxy mati terdeteksi ({dead_reason}) — akun ditandai proxy_block, skip retry via proxy yang sama.")
+                self.mark_failed(stage, dead_reason, retryable=False)
+                return False
             self.mark_failed(stage, error_message, retryable=True)
             return False
