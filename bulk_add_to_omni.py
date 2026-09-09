@@ -49,16 +49,23 @@ def read_keys(path: str):
 
 
 async def omni_login(page):
-    await page.goto(OMNI_URL, wait_until="domcontentloaded")
-    await page.wait_for_timeout(2000)
-    if "/dashboard" in page.url:
-        return
-    pwd = page.locator("input[type='password']").first
-    await pwd.wait_for(state="visible", timeout=15000)
-    await pwd.fill(OMNI_PASSWORD)
-    await page.get_by_role("button", name="Continue").click()
-    await page.wait_for_url("**/dashboard**", timeout=20000)
-    await page.wait_for_timeout(2000)
+    for attempt in range(4):
+        try:
+            await page.goto(OMNI_URL, wait_until="domcontentloaded")
+            await page.wait_for_timeout(2500)
+            if "/dashboard" in page.url:
+                return
+            pwd = page.locator("input[type='password']").first
+            await pwd.wait_for(state="visible", timeout=15000)
+            await pwd.fill(OMNI_PASSWORD)
+            await pwd.press("Enter")
+            await page.wait_for_url("**/dashboard**", timeout=30000)
+            await page.wait_for_timeout(2000)
+            return
+        except Exception as e:
+            print(f"[!] login percobaan {attempt+1} gagal: {str(e)[:80]}", flush=True)
+            await page.wait_for_timeout(5000)
+    raise RuntimeError("login AI-Omni gagal 4x")
 
 
 async def bulk_add_provider(page, slug: str, entries):
