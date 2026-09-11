@@ -27,17 +27,17 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
     Google secara berurutan sampai popup keluar dari accounts.google.com.
     """
     try:
-        print("[*] [Google Auth] Menunggu halaman Sign In Google termuat...")
+        print("[*] [Google Auth] Menunggu halaman Sign In Google termuat...", flush=True)
 
         # 1. Tunggu input email Google muncul
         email_input = auth_page.locator("input[type='email'], input#identifierId, input[name='identifier']").first
         try:
             await email_input.wait_for(state="visible", timeout=timeout_ms)
         except Exception:
-            print("[?] [Google Auth] Form email Google tidak muncul, memeriksa apakah sudah ada sesi...")
+            print("[?] [Google Auth] Form email Google tidak muncul, memeriksa apakah sudah ada sesi...", flush=True)
 
         if await email_input.is_visible():
-            print(f"[*] [Google Auth] Mengetik email ({account['email']})...")
+            print(f"[*] [Google Auth] Mengetik email ({account['email']})...", flush=True)
             await human_type(email_input, account["email"])
 
             next_email_btn = auth_page.locator("#identifierNext button, button:has-text('Next'), button:has-text('Berikutnya')").first
@@ -50,11 +50,11 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
             await human_delay(2.0, 3.0)
 
         # 2. Tunggu input password Google muncul
-        print("[*] [Google Auth] Menunggu input kata sandi...")
-        pwd_input = auth_page.locator("input[type='password'], input[name='Passwd']").first
+        print("[*] [Google Auth] Menunggu input kata sandi...", flush=True)
+        pwd_input = auth_page.locator("input[name='Passwd']:visible, input[type='password']:not([name='hiddenPassword']):visible").first
         try:
             await pwd_input.wait_for(state="visible", timeout=timeout_ms)
-            print("[*] [Google Auth] Mengetik kata sandi...")
+            print("[*] [Google Auth] Mengetik kata sandi...", flush=True)
             await human_type(pwd_input, account["password"])
 
             next_pwd_btn = auth_page.locator("#passwordNext button, button:has-text('Next'), button:has-text('Berikutnya')").first
@@ -66,21 +66,27 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
 
             await human_delay(2.0, 3.0)
         except Exception as pe:
-            print(f"[?] [Google Auth] Input password tidak muncul / dilewati: {pe}")
+            print(f"[?] [Google Auth] Input password tidak muncul / dilewati: {pe}", flush=True)
+            try:
+                await auth_page.screenshot(path=f"/root/projects/web-scrap/results/_diag_pwd_{account['email'].split('@')[0]}.png", full_page=False)
+                print(f"[?] [Google Auth] DIAG screenshot: results/_diag_pwd_{account['email'].split('@')[0]}.png", flush=True)
+                print(f"[?] [Google Auth] DIAG URL: {auth_page.url[:150]}", flush=True)
+            except Exception:
+                pass
 
         # 3. Loop post-login: Workspace ToS -> OAuth Consent (bisa >1 halaman) -> Recovery
         #    Polling tiap ~1s sampai 30s atau popup keluar dari accounts.google.com
-        print("[*] [Google Auth] Menangani post-login (ToS/Consent/Recovery)...")
+        print("[*] [Google Auth] Menangani post-login (ToS/Consent/Recovery)...", flush=True)
         loop = asyncio.get_event_loop()
         deadline = loop.time() + 30
         while loop.time() < deadline:
             try:
                 url = auth_page.url
             except Exception:
-                print("[*] [Google Auth] Popup ditutup oleh opener.")
+                print("[*] [Google Auth] Popup ditutup oleh opener.", flush=True)
                 break
             if "accounts.google." not in url and "accounts.youtube.com" not in url and "gsi/transform" not in url:
-                print(f"[*] [Google Auth] Keluar dari Google: {url[:80]}")
+                print(f"[*] [Google Auth] Keluar dari Google: {url[:80]}", flush=True)
                 break
 
             clicked = False
@@ -116,7 +122,7 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
                 ).first
                 try:
                     if await rec.count() > 0 and await rec.is_visible():
-                        print("[*] [Google Auth] Google meminta konfirmasi recovery email...")
+                        print("[*] [Google Auth] Google meminta konfirmasi recovery email...", flush=True)
                         rec_input = auth_page.locator("input[type='email'], input#knowledge-preregistered-email-response").first
                         await human_type(rec_input, account["recovery"])
                         await human_delay(0.2, 0.4)
@@ -131,5 +137,5 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
 
         return True
     except Exception as e:
-        print(f"[-] [Google Auth] Error: {e}")
+        print(f"[-] [Google Auth] Error: {e}", flush=True)
         return False
