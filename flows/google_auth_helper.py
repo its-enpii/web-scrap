@@ -7,11 +7,11 @@ from .human_helper import human_type, human_click, human_delay
 async def _try_click_first(page: Page, selectors) -> bool:
     """Coba klik selector pertama yang visible. Return True jika ada yang diklik."""
     for sel in selectors:
-        loc = page.locator(sel).first
         try:
+            loc = page.locator(sel).first
             if await loc.count() > 0 and await loc.is_visible():
                 await human_click(loc)
-                print(f"[*] [Google Auth] Klik: {sel}")
+                print(f"[*] [Google Auth] Klik: {sel}", flush=True)
                 await human_delay(2.0, 3.0)
                 return True
         except Exception:
@@ -96,10 +96,18 @@ async def fill_google_login(auth_page: Page, account: Dict[str, str], timeout_ms
             if not clicked:
                 clicked = await _try_click_first(auth_page, [
                     "button#submit_approve_access",
+                    "#submit_approve_access",
+                    "[data-id='EBS5ae']",
+                    "div[role='button']:has-text('Continue')",
+                    "div[role='button']:has-text('Lanjutkan')",
+                    "div[role='button']:has-text('Allow')",
+                    "div[role='button']:has-text('Izinkan')",
                     "button:has-text('Continue')",
                     "button:has-text('Lanjutkan')",
                     "button:has-text('Allow')",
                     "button:has-text('Izinkan')",
+                    "button:has-text('Select all')",
+                    "button:has-text('Pilih semua')",
                 ])
             # 3c. Recovery email challenge
             if not clicked and account.get("recovery"):
