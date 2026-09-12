@@ -303,8 +303,8 @@ async def run_automation(
     if proxies_list:
         print(f"[+] Proxy Terdeteksi: {len(proxies_list)} proxy aktif (mode rotasi otomatis)")
         # Pre-flight: saring proxy mati (bandwidth habis/auth gagal) SEBELUM batch jalan.
-        from proxy_preflight import filter_alive
-        alive = filter_alive(proxies_list)
+        from proxy_preflight import filter_alive_async
+        alive = await filter_alive_async(proxies_list)
         if not alive:
             print("[!!] SEMUA proxy mati. Batch dibatalkan — isi ulang bandwidth Webshare atau perbarui proxies.txt.")
             return

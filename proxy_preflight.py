@@ -47,16 +47,19 @@ async def preflight_pool(proxies: List[dict], target: str = "https://unorouter.c
         return await asyncio.gather(*tasks)
 
 
-def filter_alive(proxies: List[dict], verbose: bool = True) -> List[dict]:
-    """Sync helper: preflight lalu return hanya proxy hidup. Exit-app caller jika kosong."""
+def _running_loop() -> Optional[asyncio.AbstractEventLoop]:
+    """Event loop yang sedang berjalan di thread ini, atau None."""
     try:
-        results = asyncio.run(preflight_pool(proxies))
+        return asyncio.get_running_loop()
     except RuntimeError:
-        # sudah ada event loop jalan (dipanggil dari async context) — fallback serial
-        results = [check_proxy.__wrapped__(p) if hasattr(check_proxy, "__wrapped__") else None for p in proxies]  # pragma: no cover
-    alive = [p for p, r in zip(proxies, results) if r["ok"]]
+        return None
+
+
+def _alive_from_results(proxies: List[dict], results: List[dict], verbose: bool = True) -> List[dict]:
+    """Susun hasil preflight -> list proxy hidup + laporan verbose."""
+    alive = [p for p, r in zip(proxies, results) if r and r["ok"]]
     if verbose:
-        dead = [(r["proxy"], r["reason"]) for r in results if not r["ok"]]
+        dead = [(r["proxy"], r["reason"]) for r in results if not (r and r["ok"])]
         print(f"[preflight] Proxy hidup: {len(alive)}/{len(proxies)}")
         for dproxy, reason in dead[:5]:
             print(f"[preflight]   MATI {dproxy}: {reason}")
@@ -67,6 +70,37 @@ def filter_alive(proxies: List[dict], verbose: bool = True) -> List[dict]:
         elif not alive:
             print("[preflight] SEMUA PROXY MATI — cek bandwidth Webshare / kredensial!")
     return alive
+
+
+async def filter_alive_async(proxies: List[dict], verbose: bool = True) -> List[dict]:
+    """Async helper: preflight lalu return hanya proxy hidup. Wajib dipakai dari context async."""
+    results = await preflight_pool(proxies)
+    return _alive_from_results(proxies, results, verbose)
+
+
+def filter_alive(proxies: List[dict], verbose: bool = True) -> List[dict]:
+    """Sync helper: preflight lalu return hanya proxy hidup. Exit-app caller jika kosong.
+
+    Dari dalam coroutine yang sedang jalan, pakai `filter_alive_async()` — di sini
+    preflight dilewati (kembalikan semua proxy) supaya caller tidak crash.
+    """
+    if _running_loop() is not None:  # pragma: no cover
+        if verbose:
+            print(f"[preflight] preflight dilewati: sudah ada event loop berjalan "
+                  f"(pakai filter_alive_async) — semua {len(proxies)} proxy dianggap hidup.")
+        return list(proxies)
+
+    loop = asyncio.new_event_loop()
+    try:
+        results = loop.run_until_complete(preflight_pool(proxies))
+    except Exception as e:  # pragma: no cover
+        if verbose:
+            print(f"[preflight] preflight dilewati: {type(e).__name__}: {str(e)[:60]} "
+                  f"— semua {len(proxies)} proxy dianggap hidup.")
+        return list(proxies)
+    finally:
+        loop.close()
+    return _alive_from_results(proxies, results, verbose)
 
 
 def classify_goto_error(error_message: str) -> Optional[str]:
