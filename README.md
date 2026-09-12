@@ -32,6 +32,7 @@ Sistem otomasi modular berbasis **Python & Playwright** untuk melakukan registra
 | 6 | `qwencloud` | **QwenCloud** (`qwencloud.com`) | Registrasi/Login di QwenCloud -> Buat API Key (`sk-ws-...`). |
 | 7 | `unorouter` | **UnoRouter** (`unorouter.com`) | Register/Login username+password → buat & copy API Key (`sk-...`). |
 | 8 | `codecraft` | **CodeCraft** (`codecraftapi.com`) | Register Google OAuth -> pilih plan Basic Yearly -> kupon `DEVWEEK` -> buat & simpan API Key (`cc_...`). |
+| 9 | `apinex` | **APInex** (`apinex.bond`) | Register Google OAuth (checkbox terms) -> Buat API Key di `/keys` -> simpan API Key (`sk-apx...`). |
 
 ---
 

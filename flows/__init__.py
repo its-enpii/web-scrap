@@ -7,6 +7,7 @@ from .bai import BAIFlow
 from .qwencloud import QwenCloudFlow
 from .unorouter import UnoRouterFlow
 from .codecraft import CodeCraftFlow
+from .apinex import APInexFlow
 
 AVAILABLE_FLOWS = {
     "kiro_omni": KiroOmniFlow,
@@ -17,4 +18,5 @@ AVAILABLE_FLOWS = {
     "qwencloud": QwenCloudFlow,
     "unorouter": UnoRouterFlow,
     "codecraft": CodeCraftFlow,
+    "apinex": APInexFlow,
 }

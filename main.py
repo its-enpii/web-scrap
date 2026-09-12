@@ -203,7 +203,7 @@ async def run_single_flow_task(
     # IP; register dari IP server langsung (tanpa proxy) ditolak dengan pesan
     # "An account has already been registered from this IP address", dan
     # Turnstile + register terbukti sukses via proxy rotasi (batch pertama).
-    _direct_only_markers = ("kiro", "bai", "codecraft")
+    _direct_only_markers = ("kiro", "bai", "codecraft", "apinex")
     if assigned_proxy and any(m in flow_name_lower for m in _direct_only_markers):
         print(f"[*] [{flow_inst.name}] Bypass proxy — pakai koneksi langsung (OAuth/Turnstile gagal via proxy).")
         assigned_proxy = None
@@ -301,7 +301,7 @@ async def run_automation(
     print(f"[*] Mode Output     : {'Auto Add ke AI-Omni' if output_mode == 'omni' else f'Catat email|key ke folder {DEFAULT_OUTPUT_DIR}/'}")
     print(f"[*] Jumlah Akun     : {len(accounts)}")
     if proxies_list:
-        _direct_only_markers = ("kiro", "bai", "codecraft")
+        _direct_only_markers = ("kiro", "bai", "codecraft", "apinex")
         all_direct = all(any(m in f.lower() for m in _direct_only_markers) for f in flow_keys)
         if all_direct:
             print(f"[*] Alur yang dipilih ({', '.join(flow_keys)}) menggunakan direct connection — mengabaikan proxies.txt.")
