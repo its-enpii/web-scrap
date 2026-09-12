@@ -31,6 +31,7 @@ Sistem otomasi modular berbasis **Python & Playwright** untuk melakukan registra
 | 5 | `bai` | **BAI** (`chat.b.ai`) | Login Google Popup di `chat.b.ai` -> Buat API Key di `/key` (`sk-...`). |
 | 6 | `qwencloud` | **QwenCloud** (`qwencloud.com`) | Registrasi/Login di QwenCloud -> Buat API Key (`sk-ws-...`). |
 | 7 | `unorouter` | **UnoRouter** (`unorouter.com`) | Register/Login username+password → buat & copy API Key (`sk-...`). |
+| 8 | `codecraft` | **CodeCraft** (`codecraftapi.com`) | Register Google OAuth -> pilih plan Basic Yearly -> kupon `DEVWEEK` -> buat & simpan API Key (`cc_...`). |
 
 ---
 

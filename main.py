@@ -203,7 +203,7 @@ async def run_single_flow_task(
     # IP; register dari IP server langsung (tanpa proxy) ditolak dengan pesan
     # "An account has already been registered from this IP address", dan
     # Turnstile + register terbukti sukses via proxy rotasi (batch pertama).
-    _direct_only_markers = ("kiro", "bai")
+    _direct_only_markers = ("kiro", "bai", "codecraft")
     if assigned_proxy and any(m in flow_name_lower for m in _direct_only_markers):
         print(f"[*] [{flow_inst.name}] Bypass proxy — pakai koneksi langsung (OAuth/Turnstile gagal via proxy).")
         assigned_proxy = None
@@ -301,16 +301,22 @@ async def run_automation(
     print(f"[*] Mode Output     : {'Auto Add ke AI-Omni' if output_mode == 'omni' else f'Catat email|key ke folder {DEFAULT_OUTPUT_DIR}/'}")
     print(f"[*] Jumlah Akun     : {len(accounts)}")
     if proxies_list:
-        print(f"[+] Proxy Terdeteksi: {len(proxies_list)} proxy aktif (mode rotasi otomatis)")
-        # Pre-flight: saring proxy mati (bandwidth habis/auth gagal) SEBELUM batch jalan.
-        from proxy_preflight import filter_alive_async
-        alive = await filter_alive_async(proxies_list)
-        if not alive:
-            print("[!!] SEMUA proxy mati. Batch dibatalkan — isi ulang bandwidth Webshare atau perbarui proxies.txt.")
-            return
-        if len(alive) < len(proxies_list):
-            print(f"[!] {len(proxies_list) - len(alive)} proxy dibuang dari pool (mati). Lanjut dengan {len(alive)} proxy.")
-            proxies_list = alive
+        _direct_only_markers = ("kiro", "bai", "codecraft")
+        all_direct = all(any(m in f.lower() for m in _direct_only_markers) for f in flow_keys)
+        if all_direct:
+            print(f"[*] Alur yang dipilih ({', '.join(flow_keys)}) menggunakan direct connection — mengabaikan proxies.txt.")
+            proxies_list = []
+        else:
+            print(f"[+] Proxy Terdeteksi: {len(proxies_list)} proxy aktif (mode rotasi otomatis)")
+            # Pre-flight: saring proxy mati (bandwidth habis/auth gagal) SEBELUM batch jalan.
+            from proxy_preflight import filter_alive_async
+            alive = await filter_alive_async(proxies_list)
+            if not alive:
+                print("[!!] SEMUA proxy mati. Batch dibatalkan — isi ulang bandwidth Webshare atau perbarui proxies.txt.")
+                return
+            if len(alive) < len(proxies_list):
+                print(f"[!] {len(proxies_list) - len(alive)} proxy dibuang dari pool (mati). Lanjut dengan {len(alive)} proxy.")
+                proxies_list = alive
     else:
         print(f"[*] Status Proxy    : Direct Connection (tanpa proxy)")
     print(f"[*] Mode Headless   : {is_headless}")
